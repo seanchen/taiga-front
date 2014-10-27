@@ -36,8 +36,9 @@
             }
             p {
                 @extend %xsmall;
-                margin-bottom: 0;
+                margin-bottom: .3rem;
                 text-align: center;
+                line-height: .8rem;
             }
             .use-gravatar {
                 @extend %small;
