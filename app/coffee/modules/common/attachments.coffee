@@ -161,6 +161,7 @@ AttachmentsDirective = ($confirm) ->
             </h3>
             <div tg-check-permission="modify_<%- type %>" title="Add new attachment. Maximum upload size is 700Kb" class="add-attach">
                 <label for="add-attach" class="icon icon-plus related-tasks-buttons"></label>
+                <span class="hidden">[Max. size: 700Kb]</span>
                 <input id="add-attach" type="file" multiple="multiple"/>
             </div>
         </div>
