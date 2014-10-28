@@ -111,6 +111,12 @@ module.directive("tgUserProfile", ["$tgConfirm", "$tgAuth", "$tgRepo",  UserProf
 
 UserAvatarDirective = ($auth, $model, $rs, $confirm) ->
     link = ($scope, $el, $attrs) ->
+        showSizeInfo = ->
+            $el.find().removeClass("hiddne")
+
+        hideSizeInfo = ->
+            $el.find().addClass("hiddne")
+
         onSuccess = (response) ->
             user = $model.make_model("users", response.data)
             $auth.setUser(user)
@@ -120,6 +126,7 @@ UserAvatarDirective = ($auth, $model, $rs, $confirm) ->
             $confirm.notify('success')
 
         onError = (response) ->
+            showSizeInfo()
             $el.find('.overlay').hide()
             $confirm.notify('error', response.data._error_message)
 
@@ -129,11 +136,13 @@ UserAvatarDirective = ($auth, $model, $rs, $confirm) ->
 
         $el.on "change", "#avatar-field", (event) ->
             $el.find('.overlay').show()
+            hideSizeInfo()
             $rs.userSettings.changeAvatar($scope.avatarAttachment).then(onSuccess, onError)
 
         # Use gravatar photo
         $el.on "click", "a.use-gravatar", (event) ->
             $el.find('.overlay').show()
+            hideSizeInfo()
             $rs.userSettings.removeAvatar().then(onSuccess, onError)
 
         $scope.$on "$destroy", ->
