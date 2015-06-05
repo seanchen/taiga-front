@@ -26,6 +26,7 @@ bindOnce = @.taiga.bindOnce
 mixOf = @.taiga.mixOf
 debounceLeading = @.taiga.debounceLeading
 trim = @.taiga.trim
+debounce = @.taiga.debounce
 
 module = angular.module("taigaSearch", [])
 
@@ -43,11 +44,10 @@ class SearchController extends mixOf(taiga.Controller, taiga.PageMixin)
         "$q",
         "$tgLocation",
         "$appTitle",
-        "$tgNavUrls",
-        "tgLoader"
+        "$tgNavUrls"
     ]
 
-    constructor: (@scope, @repo, @rs, @params, @q, @location, @appTitle, @navUrls, @tgLoader) ->
+    constructor: (@scope, @repo, @rs, @params, @q, @location, @appTitle, @navUrls) ->
         @scope.sectionName = "Search"
 
         promise = @.loadInitialData()
@@ -62,9 +62,7 @@ class SearchController extends mixOf(taiga.Controller, taiga.PageMixin)
         loadSearchData = debounceLeading(100, (t) => @.loadSearchData(t))
 
         @scope.$watch "searchTerm", (term) =>
-            if not term
-                @tgLoader.pageLoaded()
-            else
+            if term
                 loadSearchData(term)
 
     loadFilters: ->
@@ -73,7 +71,7 @@ class SearchController extends mixOf(taiga.Controller, taiga.PageMixin)
         return defered.promise
 
     loadProject: ->
-        return @rs.projects.get(@scope.projectId).then (project) =>
+        return @rs.projects.getBySlug(@params.pslug).then (project) =>
             @scope.project = project
             @scope.$emit('project:loaded', project)
             @scope.issueStatusById = groupBy(project.issue_statuses, (x) -> x.id)
@@ -87,18 +85,14 @@ class SearchController extends mixOf(taiga.Controller, taiga.PageMixin)
     loadSearchData: (term) ->
         promise = @rs.search.do(@scope.projectId, term).then (data) =>
             @scope.searchResults = data
-            @tgLoader.pageLoaded()
             return data
 
         return promise
 
     loadInitialData: ->
-        promise = @repo.resolve({pslug: @params.pslug}).then (data) =>
-            @scope.projectId = data.project
-            return data
-
-        return promise.then(=> @.loadProject())
-                      .then(=> @.loadUsersAndRoles())
+        return @.loadProject().then (project) =>
+            @scope.projectId = project.id
+            @.fillUsersAndRoles(project.users, project.roles)
 
 module.controller("SearchController", SearchController)
 
@@ -107,40 +101,53 @@ module.controller("SearchController", SearchController)
 ## Search box directive
 #############################################################################
 
-SearchBoxDirective = ($lightboxService, $navurls, $location, $route)->
+SearchBoxDirective = (projectService, $lightboxService, $navurls, $location, $route)->
     link = ($scope, $el, $attrs) ->
         project = null
 
-        submit = ->
+        submit = debounce 2000, (event) =>
+            event.preventDefault()
+
             form = $el.find("form").checksley()
             if not form.validate()
                 return
 
             text = $el.find("#search-text").val()
 
-            url = $navurls.resolve("project-search", {project: project.slug})
+            url = $navurls.resolve("project-search", {project: project.get("slug")})
 
-            $lightboxService.close($el)
             $scope.$apply ->
+                $lightboxService.close($el)
+
                 $location.path(url)
                 $location.search("text", text).path(url)
                 $route.reload()
 
-        $scope.$on "search-box:show", (ctx, newProject)->
-            project = newProject
-            $lightboxService.open($el)
-            $el.find("#search-text").val("")
 
-        $el.on "submit", (event) ->
-            submit()
+        openLightbox = () ->
+            project = projectService.project
 
-        $el.on "click", ".button-green", (event) ->
-            event.preventDefault()
-            submit()
+            $lightboxService.open($el).then () ->
+                $el.find("#search-text").focus()
 
-    return {link:link}
+        $el.on "submit", "form", submit
 
-module.directive("tgSearchBox", ["lightboxService", "$tgNavUrls", "$tgLocation", "$route", SearchBoxDirective])
+        openLightbox()
+
+    return {
+        templateUrl: "search/lightbox-search.html",
+        link:link
+    }
+
+SearchBoxDirective.$inject = [
+    "tgProjectService",
+    "lightboxService",
+    "$tgNavUrls",
+    "$tgLocation",
+    "$route"
+]
+
+module.directive("tgSearchBox", SearchBoxDirective)
 
 
 #############################################################################
@@ -157,12 +164,15 @@ SearchDirective = ($log, $compile, $templatecache, $routeparams, $location) ->
             selectedSectionName = null
             selectedSectionData = null
 
-            for name, value of data
-                continue if name == "count"
-                if value.length > maxVal
-                    maxVal = value.length
-                    selectedSectionName = name
-                    selectedSectionData = value
+            if data
+                for name in ["userstories", "issues", "tasks", "wikipages"]
+                    value = data[name]
+
+                    if value.length > maxVal
+                        maxVal = value.length
+                        selectedSectionName = name
+                        selectedSectionData = value
+                        break;
 
             if maxVal == 0
                 return {name: "userstories", value: []}

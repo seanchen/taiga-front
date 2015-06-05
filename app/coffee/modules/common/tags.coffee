@@ -43,6 +43,9 @@ TagsDirective = ->
         $ctrl.$formatters.push(formatter)
         $ctrl.$parsers.push(parser)
 
+        $scope.$on "$destroy", ->
+            $el.off()
+
     return {
         require: "ngModel"
         link: link
@@ -60,12 +63,12 @@ ColorizeTagsDirective = ->
         """)
         kanban: _.template("""
         <% _.each(tags, function(tag) { %>
-            <a class="kanban-tag" href="" style="background: <%- tag.color %>" title="<%- tag.name %>" />
+            <a class="kanban-tag" href="" style="border-color: <%- tag.color %>" title="<%- tag.name %>" />
         <% }) %>
         """)
         taskboard: _.template("""
         <% _.each(tags, function(tag) { %>
-            <a class="taskboard-tag" href="" style="background: <%- tag.color %>" title="<%- tag.name %>" />
+            <a class="taskboard-tag" href="" style="border-color: <%- tag.color %>" title="<%- tag.name %>" />
         <% }) %>
         """)
     }
@@ -73,6 +76,7 @@ ColorizeTagsDirective = ->
     link = ($scope, $el, $attrs, $ctrl) ->
         render = (srcTags) ->
             template = templates[$attrs.tgColorizeTagsType]
+            srcTags.sort()
             tags = _.map srcTags, (tag) ->
                 color = $scope.project.tags_colors[tag]
                 return {name: tag, color: color}
@@ -83,76 +87,290 @@ ColorizeTagsDirective = ->
         $scope.$watch $attrs.tgColorizeTags, (tags) ->
             render(tags) if tags?
 
+        $scope.$on "$destroy", ->
+            $el.off()
+
     return {link: link}
 
 module.directive("tgColorizeTags", ColorizeTagsDirective)
 
+
 #############################################################################
-## TagLine (possible should be moved as generic directive)
+## TagLine  Directive (for Lightboxes)
 #############################################################################
 
-TagLineDirective = ($log, $rs) ->
-    # Main directive template (rendered by angular)
-    template = """
-    <div class="tags-container"></div>
-    <input type="text" placeholder="Write tag..." class="tag-input" />
-    <a href="" title="Save" class="save icon icon-floppy"></a>
-    """
+LbTagLineDirective = ($rs, $template, $compile) ->
+    ENTER_KEY = 13
+    COMMA_KEY = 188
 
-    # Tags template (rendered manually using lodash)
-    templateTags = _.template("""
-    <% _.each(tags, function(tag) { %>
-        <div class="tag" style="border-left: 5px solid <%- tag.color %>;">
-            <span class="tag-name"><%- tag.name %></span>
-            <% if (editable) { %>
-            <a href="" title="delete tag" class="icon icon-delete"></a>
-            <% } %>
-        </div>
-    <% }); %>""")
-
-    renderTags = ($el, tags, editable, tagsColors) ->
-        ctx = {
-            tags: _.map(tags, (t) -> {name: t, color: tagsColors[t]})
-            editable: editable
-        }
-        html = templateTags(ctx)
-        $el.find("div.tags-container").html(html)
-
-    normalizeTags = (tags) ->
-        tags = _.map(tags, trim)
-        tags = _.map(tags, (x) -> x.toLowerCase())
-        return _.uniq(tags)
+    templateTags = $template.get("common/tag/lb-tag-line-tags.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
-        editable = if $attrs.editable == "true" then true else false
-        $el.addClass("tags-block")
+        ## Render
+        renderTags = (tags, tagsColors) ->
+            ctx = {
+                tags: _.map(tags, (t) -> {name: t, color: tagsColors[t]})
+            }
 
+            _.map ctx.tags, (tag) =>
+                if tag.color
+                    tag.style = "border-left: 5px solid #{tag.color}"
+
+            html = $compile(templateTags(ctx))($scope)
+            $el.find("div.tags-container").html(html)
+
+        showSaveButton = -> $el.find(".save").removeClass("hidden")
+        hideSaveButton = -> $el.find(".save").addClass("hidden")
+
+        resetInput = ->
+            $el.find("input").val("")
+            $el.find("input").autocomplete("close")
+
+        ## Aux methods
         addValue = (value) ->
-            value = trim(value)
-            return if value.length <= 0
+            value = trim(value.toLowerCase())
+            return if value.length == 0
 
             tags = _.clone($model.$modelValue, false)
             tags = [] if not tags?
-            tags.push(value)
+            tags.push(value) if value not in tags
 
             $scope.$apply ->
-                $model.$setViewValue(normalizeTags(tags))
+                $model.$setViewValue(tags)
+
+            hideSaveButton()
+
+        deleteValue = (value) ->
+            value = trim(value.toLowerCase())
+            return if value.length == 0
+
+            tags = _.clone($model.$modelValue, false)
+            tags = _.pull(tags, value)
+
+            $scope.$apply ->
+                $model.$setViewValue(tags)
 
         saveInputTag = () ->
-            input = $el.find('input')
+            value = $el.find("input").val()
 
-            addValue(input.val())
-            input.val("")
-            input.autocomplete("close")
-            $el.find('.save').hide()
+            addValue(value)
+            resetInput()
 
-        $scope.$watch $attrs.ngModel, (val) ->
-            tags_colors = if $scope.project?.tags_colors? then $scope.project.tags_colors else []
-            renderTags($el, val, editable, tags_colors)
+        removeInputLastCharacter = (input) =>
+            inputValue = input.val()
+            input.val inputValue.substring(0, inputValue.length - 1)
 
-        bindOnce $scope, "projectId", (projectId) ->
-            # If not editable, no tags preloading is needed.
-            return if not editable
+        ## Events
+        $el.on "keypress", "input", (event) ->
+            return if event.keyCode != ENTER_KEY
+            event.preventDefault()
+
+        $el.on "keyup", "input", (event) ->
+            target = angular.element(event.currentTarget)
+
+            if event.keyCode == ENTER_KEY
+                saveInputTag()
+            else if event.keyCode == COMMA_KEY
+                removeInputLastCharacter(target)
+                saveInputTag()
+            else
+                if target.val().length
+                    showSaveButton()
+                else
+                    hideSaveButton()
+
+        $el.on "click", ".save", (event) ->
+            event.preventDefault()
+            saveInputTag()
+
+        $el.on "click", ".icon-delete", (event) ->
+            event.preventDefault()
+            target = angular.element(event.currentTarget)
+
+            value = target.siblings(".tag-name").text()
+            deleteValue(value)
+
+        bindOnce $scope, "project", (project) ->
+            positioningFunction = (position, elements) ->
+                menu = elements.element.element
+                menu.css("width", elements.target.width)
+                menu.css("top", position.top)
+                menu.css("left", position.left)
+
+            $el.find("input").autocomplete({
+                source: _.keys(project.tags_colors)
+                position: {
+                    my: "left top",
+                    using: positioningFunction
+                }
+                select: (event, ui) ->
+                    addValue(ui.item.value)
+                    ui.item.value = ""
+            })
+
+        $scope.$watch $attrs.ngModel, (tags) ->
+            tagsColors = $scope.project?.tags_colors or []
+            renderTags(tags, tagsColors)
+
+        $scope.$on "$destroy", ->
+            $el.off()
+
+    return {
+        link:link,
+        require:"ngModel"
+        templateUrl: "common/tag/lb-tag-line.html"
+    }
+
+module.directive("tgLbTagLine", ["$tgResources", "$tgTemplate", "$compile", LbTagLineDirective])
+
+
+#############################################################################
+## TagLine  Directive (for detail pages)
+#############################################################################
+
+TagLineDirective = ($rootScope, $repo, $rs, $confirm, $qqueue, $template, $compile) ->
+    ENTER_KEY = 13
+    ESC_KEY = 27
+    COMMA_KEY = 188
+
+    templateTags = $template.get("common/tag/tags-line-tags.html", true)
+
+    link = ($scope, $el, $attrs, $model) ->
+        isEditable = ->
+            if $attrs.requiredPerm?
+                return $scope.project.my_permissions.indexOf($attrs.requiredPerm) != -1
+
+            return true
+
+        ## Render
+        renderTags = (tags, tagsColors) ->
+            ctx = {
+                tags: _.map(tags, (t) -> {name: t, color: tagsColors[t]})
+                isEditable: isEditable()
+            }
+            html = $compile(templateTags(ctx))($scope)
+            $el.find("div.tags-container").html(html)
+
+        renderInReadModeOnly = ->
+            $el.find(".add-tag").remove()
+            $el.find("input").remove()
+            $el.find(".save").remove()
+
+        showAddTagButton = -> $el.find(".add-tag").removeClass("hidden")
+        hideAddTagButton = -> $el.find(".add-tag").addClass("hidden")
+
+        showAddTagButtonText = -> $el.find(".add-tag-text").removeClass("hidden")
+        hideAddTagButtonText = -> $el.find(".add-tag-text").addClass("hidden")
+
+        showSaveButton = -> $el.find(".save").removeClass("hidden")
+        hideSaveButton = -> $el.find(".save").addClass("hidden")
+
+        showInput = -> $el.find("input").removeClass("hidden").focus()
+        hideInput = -> $el.find("input").addClass("hidden").blur()
+        resetInput = ->
+            $el.find("input").val("")
+            $el.find("input").autocomplete("close")
+
+        ## Aux methods
+        addValue = $qqueue.bindAdd (value) ->
+            value = trim(value.toLowerCase())
+            return if value.length == 0
+
+            tags = _.clone($model.$modelValue.tags, false)
+            tags = [] if not tags?
+            tags.push(value) if value not in tags
+
+            model = $model.$modelValue.clone()
+            model.tags = tags
+            $model.$setViewValue(model)
+
+            onSuccess = ->
+                $rootScope.$broadcast("object:updated")
+            onError = ->
+                $confirm.notify("error")
+                model.revert()
+                $model.$setViewValue(model)
+            $repo.save(model).then(onSuccess, onError)
+
+            hideSaveButton()
+
+        deleteValue = $qqueue.bindAdd (value) ->
+            value = trim(value.toLowerCase())
+            return if value.length == 0
+
+            tags = _.clone($model.$modelValue.tags, false)
+            tags = _.pull(tags, value)
+
+            model = $model.$modelValue.clone()
+            model.tags = tags
+            $model.$setViewValue(model)
+
+            onSuccess = ->
+                $rootScope.$broadcast("object:updated")
+            onError = ->
+                $confirm.notify("error")
+                model.revert()
+                $model.$setViewValue(model)
+
+            return $repo.save(model).then(onSuccess, onError)
+
+        saveInputTag = () ->
+            value = $el.find("input").val()
+
+            addValue(value)
+            resetInput()
+
+        removeInputLastCharacter = (input) =>
+            inputValue = input.val()
+            input.val inputValue.substring(0, inputValue.length - 1)
+
+        ## Events
+        $el.on "keypress", "input", (event) ->
+            return if event.keyCode not in [ENTER_KEY, ESC_KEY]
+            event.preventDefault()
+
+        $el.on "keyup", "input", (event) ->
+            target = angular.element(event.currentTarget)
+
+            if event.keyCode == ENTER_KEY
+                saveInputTag()
+            else if event.keyCode == COMMA_KEY
+                removeInputLastCharacter(target)
+                saveInputTag()
+            else if event.keyCode == ESC_KEY
+                resetInput()
+                hideInput()
+                hideSaveButton()
+                showAddTagButton()
+            else
+                if target.val().length
+                    showSaveButton()
+                else
+                    hideSaveButton()
+
+        $el.on "click", ".save", (event) ->
+            event.preventDefault()
+            saveInputTag()
+
+        $el.on "click", ".add-tag", (event) ->
+            event.preventDefault()
+            hideAddTagButton()
+            showInput()
+
+        $el.on "click", ".icon-delete", (event) ->
+            event.preventDefault()
+            target = angular.element(event.currentTarget)
+
+            value = target.siblings(".tag-name").text()
+
+            deleteValue(value)
+
+        bindOnce $scope, "project.tags_colors", (tags_colors) ->
+            if not isEditable()
+                renderInReadModeOnly()
+                return
+
+            showAddTagButton()
 
             positioningFunction = (position, elements) ->
                 menu = elements.element.element
@@ -160,55 +378,36 @@ TagLineDirective = ($log, $rs) ->
                 menu.css("top", position.top)
                 menu.css("left", position.left)
 
-            $rs.projects.tags(projectId).then (data) ->
-                $el.find("input").autocomplete({
-                    source: data
-                    position: {
-                        my: "left top",
-                        using: positioningFunction
-                    }
-                    select: (event, ui) ->
-                        addValue(ui.item.value)
-                        ui.item.value = ""
-                })
+            $el.find("input").autocomplete({
+                source: _.keys(tags_colors)
+                position: {
+                    my: "left top",
+                    using: positioningFunction
+                }
+                select: (event, ui) ->
+                    addValue(ui.item.value)
+                    ui.item.value = ""
+            })
 
-        if not editable
-            $el.find("input").remove()
+        $scope.$watch $attrs.ngModel, (model) ->
+            return if not model
 
-        $el.on "keypress", "input", (event) ->
-            return if event.keyCode != 13
-            event.preventDefault()
-
-        $el.on "keyup", "input", (event) ->
-            target = angular.element(event.currentTarget)
-
-            if event.keyCode == 13
-                saveInputTag()
-            else if target.val().length
-                $el.find('.save').show()
+            if model.tags?.length
+                hideAddTagButtonText()
             else
-                $el.find('.save').hide()
+                showAddTagButtonText()
 
-        $el.on "click", ".save", saveInputTag
+            tagsColors = $scope.project?.tags_colors or []
+            renderTags(model.tags, tagsColors)
 
-        $el.on "click", ".icon-delete", (event) ->
-            event.preventDefault()
-            target = angular.element(event.currentTarget)
-            value = trim(target.siblings(".tag-name").text())
-
-            if value.length <= 0
-                return
-
-            tags = _.clone($model.$modelValue, false)
-            tags = _.pull(tags, value)
-
-            $scope.$apply ->
-                $model.$setViewValue(normalizeTags(tags))
+        $scope.$on "$destroy", ->
+            $el.off()
 
     return {
         link:link,
         require:"ngModel"
-        template: template
+        templateUrl: "common/tag/tag-line.html"
     }
 
-module.directive("tgTagLine", ["$log", "$tgResources", TagLineDirective])
+module.directive("tgTagLine", ["$rootScope", "$tgRepo", "$tgResources", "$tgConfirm", "$tgQqueue",
+                               "$tgTemplate", "$compile", TagLineDirective])

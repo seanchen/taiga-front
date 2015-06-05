@@ -2,6 +2,7 @@
 dist/
 node_modules/
 app/vendor
+vendor/
 config/main.coffee
 bower_components
 app/coffee/modules/locales/locale*.coffee
@@ -9,6 +10,6 @@ app/coffee/modules/locales/locale*.coffee
 *.swo
 tags
 tmp/
-conf/
 app/config/main.coffee
 app/plugins/taiga-front-extras
+scss-lint.log

@@ -51,6 +51,13 @@ class HistoryController extends taiga.Controller
                 delete historyResult.values_diff.description_html
                 delete historyResult.values_diff.description_diff
 
+                # If block note was modified take only the blocked_note_html field
+                if historyResult.values_diff.blocked_note_diff?
+                    historyResult.values_diff.blocked_note = historyResult.values_diff.blocked_note_diff
+
+                delete historyResult.values_diff.blocked_note_html
+                delete historyResult.values_diff.blocked_note_diff
+
             @scope.history = history
             @scope.comments = _.filter(history, (item) -> item.comment != "")
 
@@ -61,187 +68,16 @@ class HistoryController extends taiga.Controller
         return @rs.history.undeleteComment(type, objectId, activityId).then => @.loadHistory(type, objectId)
 
 
-HistoryDirective = ($log, $loading) ->
-    templateChangeDiff = _.template("""
-    <div class="change-entry">
-        <div class="activity-changed">
-            <span><%- name %></span>
-        </div>
-        <div class="activity-fromto">
-            <p>
-                <span><%= diff %></span>
-            </p>
-        </div>
-    </div>
-    """)
-
-    templateChangePoints = _.template("""
-    <% _.each(points, function(point, name) { %>
-    <div class="change-entry">
-        <div class="activity-changed">
-            <span>US points (<%- name.toLowerCase() %>)</span>
-        </div>
-        <div class="activity-fromto">
-            <p>
-                <strong> from </strong> <br />
-                <span><%= point[0] %></span>
-            </p>
-            <p>
-                <strong> to </strong> <br />
-                <span><%= point[1] %></span>
-            </p>
-        </div>
-    </div>
-    <% }); %>
-    """)
-
-    templateChangeGeneric = _.template("""
-    <div class="change-entry">
-        <div class="activity-changed">
-            <span><%- name %></span>
-        </div>
-        <div class="activity-fromto">
-            <p>
-                <strong> from </strong> <br />
-                <span><%= from %></span>
-            </p>
-            <p>
-                <strong> to </strong> <br />
-                <span><%= to %></span>
-            </p>
-        </div>
-    </div>
-    """)
-    templateChangeAttachment = _.template("""
-    <div class="change-entry">
-        <div class="activity-changed">
-            <span><%- name %></span>
-        </div>
-        <div class="activity-fromto">
-            <% _.each(diff, function(change) { %>
-                <p>
-                    <strong><%= change.name %> from </strong> <br />
-                    <span><%= change.from %></span>
-                </p>
-                <p>
-                    <strong><%= change.name %> to </strong> <br />
-                    <span><%= change.to %></span>
-                </p>
-            <% }) %>
-        </div>
-    </div>
-    """)
-
-    templateDeletedComment = _.template("""
-        <div class="activity-single comment deleted-comment">
-            <div>
-                <span>Comment deleted by <%- deleteCommentUser %> on <%- deleteCommentDate %></span>
-                <a href="" title="Show comment" class="show-deleted-comment">(Show deleted comment)</a>
-                <a href="" title="Show comment" class="hide-deleted-comment hidden">(Hide deleted comment)</a>
-                <div class="comment-body wysiwyg"><%= deleteComment %></div>
-            </div>
-            <% if (canRestoreComment) { %>
-                <a href="" class="comment-restore" data-activity-id="<%- activityId %>">
-                    <span class="icon icon-reload"></span>
-                    <span>Restore comment</span>
-                </a>
-            <% } %>
-        </div>
-    """)
-
-    templateActivity = _.template("""
-    <div class="activity-single <%- mode %>">
-        <div class="activity-user">
-            <a class="avatar" href="" title="<%- userFullName %>">
-                <img src="<%- avatar %>" alt="<%- userFullName %>">
-            </a>
-        </div>
-        <div class="activity-content">
-            <div class="activity-username">
-                <a class="username" href="" title="<%- userFullName %>">
-                    <%- userFullName %>
-                </a>
-                <span class="date">
-                    <%- creationDate %>
-                </span>
-            </div>
-
-            <% if (comment.length > 0) { %>
-                <% if ((deleteCommentDate || deleteCommentUser)) { %>
-                    <div class="deleted-comment">
-                        <span>Comment deleted by <%- deleteCommentUser %> on <%- deleteCommentDate %></span>
-                    </div>
-                <% } %>
-                <div class="comment wysiwyg">
-                    <%= comment %>
-                </div>
-                <% if (!deleteCommentDate && mode !== "activity" && canDeleteComment) { %>
-                    <a href="" class="icon icon-delete comment-delete" data-activity-id="<%- activityId %>"></a>
-                <% } %>
-            <% } %>
-
-            <% if(changes.length > 0) { %>
-            <div class="changes">
-                <% if (mode != "activity") { %>
-                <a class="changes-title" href="" title="Show activity">
-                  <span><%- changesText %></span>
-                  <span class="icon icon-arrow-up"></span>
-                </a>
-                <% } %>
-
-                <% _.each(changes, function(change) { %>
-                    <%= change %>
-                <% }) %>
-            </div>
-            <% } %>
-        </div>
-    </div>
-    """)
-
-    templateBaseEntries = _.template("""
-
-    <% if (showMore > 0) { %>
-    <a href="" title="Show more" class="show-more show-more-comments">
-    + Show previous entries (<%- showMore %> more)
-    </a>
-    <% } %>
-    <% _.each(entries, function(entry) { %>
-        <%= entry %>
-    <% }) %>
-    """)
-
-    templateBase = _.template("""
-    <section class="history">
-        <ul class="history-tabs">
-            <li>
-                <a href="#" class="active">
-                    <span class="icon icon-comment"></span>
-                    <span class="tab-title">Comments</span>
-                </a>
-            </li>
-            <li>
-                <a href="#">
-                    <span class="icon icon-issues"></span>
-                    <span class="tab-title">Activity</span>
-                </a>
-            </li>
-        </ul>
-        <section class="history-comments">
-            <div class="comments-list"></div>
-            <div tg-check-permission="modify_<%- type %>" tg-toggle-comment class="add-comment">
-                <textarea placeholder="Type a new comment here"
-                    ng-model="<%- ngmodel %>.comment" tg-markitup="tg-markitup">
-                </textarea>
-                <% if (mode !== "edit") { %>
-                <a href="" title="Comment" class="button button-green save-comment">Comment</a>
-                <% } %>
-            </div>
-        </section>
-        <section class="history-activity hidden">
-            <div class="changes-list"></div>
-        </section>
-    </section>
-    """)
+HistoryDirective = ($log, $loading, $qqueue, $template, $confirm, $translate, $compile) ->
+    templateChangeDiff = $template.get("common/history/history-change-diff.html", true)
+    templateChangePoints = $template.get("common/history/history-change-points.html", true)
+    templateChangeGeneric = $template.get("common/history/history-change-generic.html", true)
+    templateChangeAttachment = $template.get("common/history/history-change-attachment.html", true)
+    templateChangeList = $template.get("common/history/history-change-list.html", true)
+    templateDeletedComment = $template.get("common/history/history-deleted-comment.html", true)
+    templateActivity = $template.get("common/history/history-activity.html", true)
+    templateBaseEntries = $template.get("common/history/history-base-entries.html", true)
+    templateBase = $template.get("common/history/history-base.html", true)
 
     link = ($scope, $el, $attrs, $ctrl) ->
         # Bootstraping
@@ -250,6 +86,9 @@ HistoryDirective = ($log, $loading) ->
 
         showAllComments = false
         showAllActivity = false
+
+        getPrettyDateFormat = ->
+            return $translate.instant("ACTIVITY.DATETIME")
 
         bindOnce $scope, $attrs.ngModel, (model) ->
             type = $attrs.type
@@ -261,21 +100,40 @@ HistoryDirective = ($log, $loading) ->
         # Helpers
         getHumanizedFieldName = (field) ->
             humanizedFieldNames = {
-                # US
-                assigned_to: "assigned to"
-                is_closed: "is closed"
-                finish_date: "finish date"
-                client_requirement: "client requirement"
-                team_requirement: "team requirement"
+                subject :              $translate.instant("ACTIVITY.FIELDS.SUBJECT")
+                name:                  $translate.instant("ACTIVITY.FIELDS.NAME")
+                description :          $translate.instant("ACTIVITY.FIELDS.DESCRIPTION")
+                content:               $translate.instant("ACTIVITY.FIELDS.CONTENT")
+                status:                $translate.instant("ACTIVITY.FIELDS.STATUS")
+                is_closed :            $translate.instant("ACTIVITY.FIELDS.IS_CLOSED")
+                finish_date :          $translate.instant("ACTIVITY.FIELDS.FINISH_DATE")
+                type:                  $translate.instant("ACTIVITY.FIELDS.TYPE")
+                priority:              $translate.instant("ACTIVITY.FIELDS.PRIORITY")
+                severity:              $translate.instant("ACTIVITY.FIELDS.SEVERITY")
+                assigned_to :          $translate.instant("ACTIVITY.FIELDS.ASSIGNED_TO")
+                watchers :             $translate.instant("ACTIVITY.FIELDS.WATCHERS")
+                milestone :            $translate.instant("ACTIVITY.FIELDS.MILESTONE")
+                user_story:            $translate.instant("ACTIVITY.FIELDS.USER_STORY")
+                project:               $translate.instant("ACTIVITY.FIELDS.PROJECT")
+                is_blocked:            $translate.instant("ACTIVITY.FIELDS.IS_BLOCKED")
+                blocked_note:          $translate.instant("ACTIVITY.FIELDS.BLOCKED_NOTE")
+                points:                $translate.instant("ACTIVITY.FIELDS.POINTS")
+                client_requirement :   $translate.instant("ACTIVITY.FIELDS.CLIENT_REQUIREMENT")
+                team_requirement :     $translate.instant("ACTIVITY.FIELDS.TEAM_REQUIREMENT")
+                is_iocaine:            $translate.instant("ACTIVITY.FIELDS.IS_IOCAINE")
+                tags:                  $translate.instant("ACTIVITY.FIELDS.TAGS")
+                attachments :          $translate.instant("ACTIVITY.FIELDS.ATTACHMENTS")
+                is_deprecated:         $translate.instant("ACTIVITY.FIELDS.IS_DEPRECATED")
+                blocked_note:          $translate.instant("ACTIVITY.FIELDS.BLOCKED_NOTE")
+                is_blocked:            $translate.instant("ACTIVITY.FIELDS.IS_BLOCKED")
+                order:                 $translate.instant("ACTIVITY.FIELDS.ORDER")
+                backlog_order:         $translate.instant("ACTIVITY.FIELDS.BACKLOG_ORDER")
+                sprint_order:          $translate.instant("ACTIVITY.FIELDS.SPRINT_ORDER")
+                kanban_order:          $translate.instant("ACTIVITY.FIELDS.KANBAN_ORDER")
+                taskboard_order:       $translate.instant("ACTIVITY.FIELDS.TASKBOARD_ORDER")
+                us_order:              $translate.instant("ACTIVITY.FIELDS.US_ORDER")
+            }
 
-                # Task
-                milestone: "sprint"
-                user_story: "user story"
-                is_iocaine: "is iocaine"
-
-                # Attachment
-                is_deprecated: "is deprecated"
-            } # TODO i18n
             return humanizedFieldNames[field] or field
 
         getUserFullName = (userId) ->
@@ -293,17 +151,17 @@ HistoryDirective = ($log, $loading) ->
         formatChange = (change) ->
             if _.isArray(change)
                 if change.length == 0
-                    return "nil"
+                    return $translate.instant("ACTIVITY.VALUES.EMPTY")
                 return change.join(", ")
 
             if change == ""
-                return "nil"
+                return $translate.instant("ACTIVITY.VALUES.EMPTY")
+
+            if not change? or change == false
+                return $translate.instant("ACTIVITY.VALUES.NO")
 
             if change == true
-                return "yes"
-
-            if change == false
-                return "no"
+                return $translate.instant("ACTIVITY.VALUES.YES")
 
             return change
 
@@ -313,38 +171,90 @@ HistoryDirective = ($log, $loading) ->
             attachments = _.map value, (changes, type) ->
                 if type == "new"
                     return _.map changes, (change) ->
-                        # TODO: i18n
-                        return templateChangeDiff({name: "new attachment", diff: change.filename})
+                        return templateChangeDiff({
+                            name: $translate.instant("ACTIVITY.NEW_ATTACHMENT"),
+                            diff: change.filename
+                        })
                 else if type == "deleted"
                     return _.map changes, (change) ->
-                        # TODO: i18n
-                        return templateChangeDiff({name: "deleted attachment", diff: change.filename})
+                        return templateChangeDiff({
+                            name: $translate.instant("ACTIVITY.DELETED_ATTACHMENT"),
+                            diff: change.filename
+                        })
                 else
                     return _.map changes, (change) ->
-                        # TODO: i18n
-                        name = "updated attachment #{change.filename}"
+                        name = $translate.instant("ACTIVITY.UPDATED_ATTACHMENT", {filename: change.filename})
+
                         diff = _.map change.changes, (values, name) ->
                             return {
                                 name: getHumanizedFieldName(name)
                                 from: formatChange(values[0])
                                 to: formatChange(values[1])
                             }
+
                         return templateChangeAttachment({name: name, diff: diff})
 
             return _.flatten(attachments).join("\n")
 
+        renderCustomAttributesEntry = (value) ->
+            customAttributes = _.map value, (changes, type) ->
+                if type == "new"
+                    return _.map changes, (change) ->
+                        html = templateChangeGeneric({
+                            name: change.name,
+                            from: formatChange(""),
+                            to: formatChange(change.value)
+                        })
+
+                        html = $compile(html)($scope)
+
+                        return html[0].outerHTML
+                else if type == "deleted"
+                    return _.map changes, (change) ->
+                        return templateChangeDiff({
+                            name: $translate.instant("ACTIVITY.DELETED_CUSTOM_ATTRIBUTE")
+                            diff: change.name
+                        })
+                else
+                    return _.map changes, (change) ->
+                        customAttrsChanges = _.map change.changes, (values) ->
+                            return templateChangeGeneric({
+                                name: change.name
+                                from: formatChange(values[0])
+                                to: formatChange(values[1])
+                            })
+                        return _.flatten(customAttrsChanges).join("\n")
+
+            return _.flatten(customAttributes).join("\n")
+
         renderChangeEntry = (field, value) ->
             if field == "description"
-                # TODO: i18n
-                return templateChangeDiff({name: "description", diff: value[1]})
+                return templateChangeDiff({name: getHumanizedFieldName("description"), diff: value[1]})
+            else if field == "blocked_note"
+                return templateChangeDiff({name: getHumanizedFieldName("blocked_note"), diff: value[1]})
             else if field == "points"
-                return templateChangePoints({points: value})
+                html = templateChangePoints({points: value})
+
+                html = $compile(html)($scope)
+
+                return html[0].outerHTML
             else if field == "attachments"
                 return renderAttachmentEntry(value)
+            else if field == "custom_attributes"
+                return renderCustomAttributesEntry(value)
+            else if field in ["tags", "watchers"]
+                name = getHumanizedFieldName(field)
+                removed = _.difference(value[0], value[1])
+                added = _.difference(value[1], value[0])
+                html = templateChangeList({name:name, removed:removed, added: added})
+
+                html = $compile(html)($scope)
+
+                return html[0].outerHTML
             else if field == "assigned_to"
                 name = getHumanizedFieldName(field)
-                from = formatChange(value[0] or "Unassigned")
-                to = formatChange(value[1] or "Unassigned")
+                from = formatChange(value[0] or $translate.instant("ACTIVITY.VALUES.UNASSIGNED"))
+                to = formatChange(value[1] or $translate.instant("ACTIVITY.VALUES.UNASSIGNED"))
                 return templateChangeGeneric({name:name, from:from, to: to})
             else
                 name = getHumanizedFieldName(field)
@@ -352,52 +262,56 @@ HistoryDirective = ($log, $loading) ->
                 to = formatChange(value[1])
                 return templateChangeGeneric({name:name, from:from, to: to})
 
-        renderChangeEntries = (change, join=true) ->
-            entries = _.map(change.values_diff, (value, field) -> renderChangeEntry(field, value))
-            if join
-                return entries.join("\n")
-            return entries
+        renderChangeEntries = (change) ->
+            return _.map(change.values_diff, (value, field) -> renderChangeEntry(field, value))
 
         renderChangesHelperText = (change) ->
             size = countChanges(change)
-            if size == 1
-                return "Made #{size} change" # TODO: i18n
-            return "Made #{size} changes" # TODO: i18n
+            return $translate.instant("ACTIVITY.SIZE_CHANGE", {size: size}, 'messageformat')
 
         renderComment = (comment) ->
-            if (comment.delete_comment_date or comment.delete_comment_user)
-                return templateDeletedComment({
-                    deleteCommentDate: moment(comment.delete_comment_date).format("DD MMM YYYY HH:mm")
+            if (comment.delete_comment_date or comment.delete_comment_user?.name)
+                html = templateDeletedComment({
+                    deleteCommentDate: moment(comment.delete_comment_date).format(getPrettyDateFormat()) if comment.delete_comment_date
                     deleteCommentUser: comment.delete_comment_user.name
                     deleteComment: comment.comment_html
                     activityId: comment.id
-                    canRestoreComment: comment.delete_comment_user.pk == $scope.user.id or $scope.project.my_permissions.indexOf("modify_project") > -1
+                    canRestoreComment: (comment.delete_comment_user.pk == $scope.user.id or
+                                        $scope.project.my_permissions.indexOf("modify_project") > -1)
                 })
 
-            return templateActivity({
+                html = $compile(html)($scope)
+
+                return html[0].outerHTML
+
+            html = templateActivity({
                 avatar: getUserAvatar(comment.user.pk)
                 userFullName: comment.user.name
-                creationDate: moment(comment.created_at).format("DD MMM YYYY HH:mm")
+                creationDate: moment(comment.created_at).format(getPrettyDateFormat())
                 comment: comment.comment_html
                 changesText: renderChangesHelperText(comment)
-                changes: renderChangeEntries(comment, false)
+                changes: renderChangeEntries(comment)
                 mode: "comment"
-                deleteCommentDate: moment(comment.delete_comment_date).format("DD MMM YYYY HH:mm") if comment.delete_comment_date
+                deleteCommentDate: moment(comment.delete_comment_date).format(getPrettyDateFormat()) if comment.delete_comment_date
                 deleteCommentUser: comment.delete_comment_user.name if comment.delete_comment_user?.name
                 activityId: comment.id
-                canDeleteComment: comment.user.pk == $scope.user.id or $scope.project.my_permissions.indexOf("modify_project") > -1
+                canDeleteComment: comment.user.pk == $scope.user?.id or $scope.project.my_permissions.indexOf("modify_project") > -1
             })
+
+            html = $compile(html)($scope)
+
+            return html[0].outerHTML
 
         renderChange = (change) ->
             return templateActivity({
                 avatar: getUserAvatar(change.user.pk)
                 userFullName: change.user.name
-                creationDate: moment(change.created_at).format("DD MMM YYYY HH:mm")
+                creationDate: moment(change.created_at).format(getPrettyDateFormat())
                 comment: change.comment_html
-                changes: renderChangeEntries(change, false)
+                changes: renderChangeEntries(change)
                 changesText: ""
                 mode: "activity"
-                deleteCommentDate: moment(change.delete_comment_date).format("DD MMM YYYY HH:mm") if change.delete_comment_date
+                deleteCommentDate: moment(change.delete_comment_date).format(getPrettyDateFormat()) if change.delete_comment_date
                 deleteCommentUser: change.delete_comment_user.name if change.delete_comment_user?.name
                 activityId: change.id
             })
@@ -408,7 +322,9 @@ HistoryDirective = ($log, $loading) ->
             else
                 showMore = totalEntries - entries.length
 
-            return templateBaseEntries({entries: entries, showMore:showMore})
+            html = templateBaseEntries({entries: entries, showMore:showMore})
+            html = $compile(html)($scope)
+            return html
 
         # Render into DOM (operations with dom mutability)
 
@@ -432,22 +348,11 @@ HistoryDirective = ($log, $loading) ->
             html = renderHistory(changes, totalChanges)
             $el.find(".changes-list").html(html)
 
-        # Watchers
-
-        $scope.$watch("comments", renderComments)
-        $scope.$watch("history",  renderActivity)
-
-        $scope.$on("history:reload", -> $ctrl.loadHistory(type, objectId))
-
-        # Events
-
-        $el.on "click", ".add-comment a.button-green", debounce 2000, (event) ->
-            event.preventDefault()
+        save = $qqueue.bindAdd (target) =>
             $scope.$broadcast("markdown-editor:submit")
 
-            target = angular.element(event.currentTarget)
-
             $el.find(".comment-list").addClass("activeanimation")
+
             onSuccess = ->
                 $ctrl.loadHistory(type, objectId).finally ->
                     $loading.finish(target)
@@ -458,7 +363,23 @@ HistoryDirective = ($log, $loading) ->
 
             model = $scope.$eval($attrs.ngModel)
             $loading.start(target)
+
             $ctrl.repo.save(model).then(onSuccess, onError)
+
+        # Watchers
+
+        $scope.$watch("comments", renderComments)
+        $scope.$watch("history",  renderActivity)
+
+        $scope.$on("object:updated", -> $ctrl.loadHistory(type, objectId))
+
+        # Events
+
+        $el.on "click", ".add-comment input.button-green", debounce 2000, (event) ->
+            event.preventDefault()
+
+            target = angular.element(event.currentTarget)
+            save(target)
 
         $el.on "click", ".show-more", (event) ->
             event.preventDefault()
@@ -498,11 +419,15 @@ HistoryDirective = ($log, $loading) ->
             $el.find(".history section").toggleClass("hidden")
 
         $el.on "click", ".comment-delete", debounce 2000, (event) ->
+            event.preventDefault()
+
             target = angular.element(event.currentTarget)
             activityId = target.data('activity-id')
             $ctrl.deleteComment(type, objectId, activityId)
 
         $el.on "click", ".comment-restore", debounce 2000, (event) ->
+            event.preventDefault()
+
             target = angular.element(event.currentTarget)
             activityId = target.data('activity-id')
             $ctrl.undeleteComment(type, objectId, activityId)
@@ -511,7 +436,9 @@ HistoryDirective = ($log, $loading) ->
             $el.off()
 
     templateFn = ($el, $attrs) ->
-        return templateBase({ngmodel: $attrs.ngModel, type: $attrs.type, mode: $attrs.mode})
+        html = templateBase({ngmodel: $attrs.ngModel, type: $attrs.type, mode: $attrs.mode})
+
+        return html
 
     return {
         controller: HistoryController
@@ -522,4 +449,5 @@ HistoryDirective = ($log, $loading) ->
     }
 
 
-module.directive("tgHistory", ["$log", "$tgLoading", HistoryDirective])
+module.directive("tgHistory", ["$log", "$tgLoading", "$tgQqueue", "$tgTemplate", "$tgConfirm", "$translate",
+                               "$compile", HistoryDirective])

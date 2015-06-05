@@ -24,15 +24,30 @@ taiga = @.taiga
 module = angular.module("taigaCommon", [])
 
 #############################################################################
+## Get the selected text
+#############################################################################
+SelectedText = ($window, $document) ->
+    get = () ->
+        if $window.getSelection
+            return $window.getSelection().toString()
+        else if $document.selection
+            return $document.selection.createRange().text
+        return ""
+
+    return {get: get}
+
+module.factory("$selectedText", ["$window", "$document", SelectedText])
+
+#############################################################################
 ## Permission directive, hide elements when necessary
 #############################################################################
 
 CheckPermissionDirective = ->
     render = ($el, project, permission) ->
-        $el.show() if project.my_permissions.indexOf(permission) > -1
+        $el.removeClass('hidden') if project.my_permissions.indexOf(permission) > -1
 
     link = ($scope, $el, $attrs) ->
-        $el.hide()
+        $el.addClass('hidden')
         permission = $attrs.tgCheckPermission
 
         $scope.$watch "project", (project) ->
@@ -44,6 +59,42 @@ CheckPermissionDirective = ->
     return {link:link}
 
 module.directive("tgCheckPermission", CheckPermissionDirective)
+
+#############################################################################
+## Add class based on permissions
+#############################################################################
+
+ClassPermissionDirective = ->
+    name = "tgClassPermission"
+
+    link = ($scope, $el, $attrs) ->
+        checkPermissions = (project, className, permission) ->
+            negation = permission[0] == "!"
+
+            permission = permission.slice(1) if negation
+
+            if negation && project.my_permissions.indexOf(permission) == -1
+                $el.addClass(className)
+            else if !negation && project.my_permissions.indexOf(permission) != -1
+                $el.addClass(className)
+            else
+                $el.removeClass(className)
+
+        tgClassPermissionWatchAction = (project) ->
+            if project
+                unbindWatcher()
+
+                classes = $scope.$eval($attrs[name])
+
+                for className, permission of classes
+                    checkPermissions(project, className, permission)
+
+
+        unbindWatcher = $scope.$watch "project", tgClassPermissionWatchAction
+
+    return {link:link}
+
+module.directive("tgClassPermission", ClassPermissionDirective)
 
 #############################################################################
 ## Animation frame service, apply css changes in the next render frame
@@ -143,3 +194,49 @@ LimitLineLengthDirective = () ->
     return {link:link}
 
 module.directive("tgLimitLineLength", LimitLineLengthDirective)
+
+#############################################################################
+## Queue Q promises
+#############################################################################
+
+Qqueue = ($q) ->
+    deferred = $q.defer()
+    deferred.resolve()
+
+    lastPromise = deferred.promise
+
+    qqueue = {
+        bindAdd: (fn) =>
+            return (args...) =>
+                lastPromise = lastPromise.then () => fn.apply(@, args)
+
+            return qqueue
+        add: (fn) =>
+            if !lastPromise
+                lastPromise = fn()
+            else
+                lastPromise = lastPromise.then(fn)
+
+            return qqueue
+    }
+
+    return qqueue
+
+module.factory("$tgQqueue", ["$q", Qqueue])
+
+#############################################################################
+## Templates
+#############################################################################
+
+Template = ($templateCache) ->
+    return {
+        get: (name, lodash = false) =>
+            tmp = $templateCache.get(name)
+
+            if lodash
+                tmp = _.template(tmp)
+
+            return tmp
+    }
+
+module.factory("$tgTemplate", ["$templateCache", Template])

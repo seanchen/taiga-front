@@ -2,12 +2,12 @@
     li {
         @extend %large;
         @extend %title;
-        border-bottom: 1px solid #cdcdcd;
+        border-bottom: 1px solid $gray-light;
         text-transform: uppercase;
         &:hover {
             .icon {
-                @include transition (opacity 1s linear);
                 opacity: 1;
+                transition: opacity 1s linear;
             }
         }
         a {
@@ -18,36 +18,28 @@
             }
         }
         .icon {
-            @include transition (opacity 1s linear);
             color: $blackish;
             float: right;
             opacity: 0;
+            transition: opacity 1s linear;
         }
         input {
+            @extend %text;
+            @extend %medium;
             background: $grayer;
             color: $whitish;
             @include placeholder {
                 color: $gray-light;
             }
         }
-        &.loading {
-            background: $grayer;
-            border: 1px solid #b8b8b8;
+        .loading {
             margin: 0;
             padding: 8px;
             text-align: center;
             width: 100%;
-            .icon-spinner {
-                color: $whitish;
-                float: none;
-            }
-            span {
-                @include animation (loading .5s linear);
-                @include animation (spin 1s linear infinite);
-            }
         }
     }
-    .button {
+    .add-button {
         color: $white;
         display: block;
         margin-bottom: .5rem;

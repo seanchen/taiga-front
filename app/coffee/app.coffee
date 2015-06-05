@@ -20,6 +20,7 @@
 ###
 
 @taiga = taiga = {}
+@.taigaContribPlugins = @.taigaContribPlugins or []
 
 # Generic function for generate hash from a arbitrary length
 # collection of parameters.
@@ -34,117 +35,301 @@ taiga.generateUniqueSessionIdentifier = ->
 
 taiga.sessionId = taiga.generateUniqueSessionIdentifier()
 
-
-configure = ($routeProvider, $locationProvider, $httpProvider, $provide, $tgEventsProvider, tgLoaderProvider) ->
+configure = ($routeProvider, $locationProvider, $httpProvider, $provide, $tgEventsProvider, $compileProvider, $translateProvider) ->
     $routeProvider.when("/",
-        {templateUrl: "/partials/projects.html", resolve: {loader: tgLoaderProvider.add()}})
+        {
+            templateUrl: "home/home.html",
+            access: {
+                requiresLogin: true
+            },
+            title: "PROJECT.WELCOME",
+            loader: true
+        }
+    )
+
+    $routeProvider.when("/projects/",
+        {
+            templateUrl: "projects/listing/projects-listing.html",
+            access: {
+                requiresLogin: true
+            },
+            title: "PROJECT.SECTION_PROJECTS",
+            loader: true,
+            controller: "ProjectsListing",
+            controllerAs: "vm"
+        }
+    )
+
     $routeProvider.when("/project/:pslug/",
-        {templateUrl: "/partials/project.html"})
-    $routeProvider.when("/project/:pslug/backlog",
-        {templateUrl: "/partials/backlog.html", resolve: {loader: tgLoaderProvider.add()}})
-    $routeProvider.when("/project/:pslug/taskboard/:sslug",
-        {templateUrl: "/partials/taskboard.html", resolve: {loader: tgLoaderProvider.add()}})
+        {
+            templateUrl: "projects/project/project.html",
+            loader: true,
+            controller: "Project",
+            controllerAs: "vm"
+        }
+    )
+
     $routeProvider.when("/project/:pslug/search",
-        {templateUrl: "/partials/search.html", reloadOnSearch: false})
+        {
+            templateUrl: "search/search.html",
+            reloadOnSearch: false,
+            section: "search"
+        }
+    )
+
+    $routeProvider.when("/project/:pslug/backlog",
+        {
+            templateUrl: "backlog/backlog.html",
+            loader: true,
+            section: "backlog"
+        }
+    )
+
     $routeProvider.when("/project/:pslug/kanban",
-        {templateUrl: "/partials/kanban.html", resolve: {loader: tgLoaderProvider.add()}})
+        {
+            templateUrl: "kanban/kanban.html",
+            loader: true,
+            section: "kanban"
+        }
+    )
+
+    # Milestone
+    $routeProvider.when("/project/:pslug/taskboard/:sslug",
+        {
+            templateUrl: "taskboard/taskboard.html",
+            loader: true,
+            section: "backlog"
+        }
+    )
 
     # User stories
     $routeProvider.when("/project/:pslug/us/:usref",
-        {templateUrl: "/partials/us-detail.html", resolve: {loader: tgLoaderProvider.add()}})
-    $routeProvider.when("/project/:pslug/us/:usref/edit",
-        {templateUrl: "/partials/us-detail-edit.html"})
+        {
+            templateUrl: "us/us-detail.html",
+            loader: true,
+            section: "backlog-kanban"
+        }
+    )
 
     # Tasks
     $routeProvider.when("/project/:pslug/task/:taskref",
-        {templateUrl: "/partials/task-detail.html", resolve: {loader: tgLoaderProvider.add()}})
-    $routeProvider.when("/project/:pslug/task/:taskref/edit",
-        {templateUrl: "/partials/task-detail-edit.html"})
+        {
+            templateUrl: "task/task-detail.html",
+            loader: true,
+            section: "backlog-kanban"
+        }
+    )
 
     # Wiki
     $routeProvider.when("/project/:pslug/wiki",
         {redirectTo: (params) -> "/project/#{params.pslug}/wiki/home"}, )
     $routeProvider.when("/project/:pslug/wiki/:slug",
-        {templateUrl: "/partials/wiki.html", resolve: {loader: tgLoaderProvider.add()}})
-    $routeProvider.when("/project/:pslug/wiki/:slug/edit",
-        {templateUrl: "/partials/wiki-edit.html"})
+        {
+            templateUrl: "wiki/wiki.html",
+            loader: true,
+            section: "wiki"
+        }
+    )
+
+    # Team
+    $routeProvider.when("/project/:pslug/team",
+        {
+            templateUrl: "team/team.html",
+            loader: true,
+            section: "team"
+        }
+    )
 
     # Issues
     $routeProvider.when("/project/:pslug/issues",
-        {templateUrl: "/partials/issues.html", resolve: {loader: tgLoaderProvider.add()}})
+        {
+            templateUrl: "issue/issues.html",
+            loader: true,
+            section: "issues"
+        }
+    )
     $routeProvider.when("/project/:pslug/issue/:issueref",
-        {templateUrl: "/partials/issues-detail.html"})
-    $routeProvider.when("/project/:pslug/issue/:issueref/edit",
-        {templateUrl: "/partials/issues-detail-edit.html"})
+        {
+            templateUrl: "issue/issues-detail.html",
+            loader: true,
+            section: "issues"
+        }
+    )
 
-    # Admin
+    # Admin - Project Profile
     $routeProvider.when("/project/:pslug/admin/project-profile/details",
-        {templateUrl: "/partials/admin-project-profile.html"})
+        {
+            templateUrl: "admin/admin-project-profile.html",
+            section: "admin"
+        }
+    )
     $routeProvider.when("/project/:pslug/admin/project-profile/default-values",
-        {templateUrl: "/partials/admin-project-default-values.html"})
+        {
+            templateUrl: "admin/admin-project-default-values.html",
+            section: "admin"
+        }
+    )
     $routeProvider.when("/project/:pslug/admin/project-profile/modules",
-        {templateUrl: "/partials/admin-project-modules.html"})
-    $routeProvider.when("/project/:pslug/admin/project-values/us-status",
-        {templateUrl: "/partials/admin-project-values-us-status.html"})
-    $routeProvider.when("/project/:pslug/admin/project-values/us-points",
-        {templateUrl: "/partials/admin-project-values-us-points.html"})
-    $routeProvider.when("/project/:pslug/admin/project-values/task-status",
-        {templateUrl: "/partials/admin-project-values-task-status.html"})
-    $routeProvider.when("/project/:pslug/admin/project-values/issue-status",
-        {templateUrl: "/partials/admin-project-values-issue-status.html"})
-    $routeProvider.when("/project/:pslug/admin/project-values/issue-types",
-        {templateUrl: "/partials/admin-project-values-issue-types.html"})
-    $routeProvider.when("/project/:pslug/admin/project-values/issue-priorities",
-        {templateUrl: "/partials/admin-project-values-issue-priorities.html"})
-    $routeProvider.when("/project/:pslug/admin/project-values/issue-severities",
-        {templateUrl: "/partials/admin-project-values-issue-severities.html"})
+        {
+            templateUrl: "admin/admin-project-modules.html",
+            section: "admin"
+        }
+    )
+    $routeProvider.when("/project/:pslug/admin/project-profile/export",
+        {
+            templateUrl: "admin/admin-project-export.html",
+            section: "admin"
+        }
+    )
+    $routeProvider.when("/project/:pslug/admin/project-profile/reports",
+        {
+            templateUrl: "admin/admin-project-reports.html",
+            section: "admin"
+        }
+    )
+
+    $routeProvider.when("/project/:pslug/admin/project-values/status",
+        {
+            templateUrl: "admin/admin-project-values-status.html",
+            section: "admin"
+        }
+    )
+    $routeProvider.when("/project/:pslug/admin/project-values/points",
+        {
+            templateUrl: "admin/admin-project-values-points.html",
+            section: "admin"
+        }
+    )
+    $routeProvider.when("/project/:pslug/admin/project-values/priorities",
+        {
+            templateUrl: "admin/admin-project-values-priorities.html",
+            section: "admin"
+        }
+    )
+    $routeProvider.when("/project/:pslug/admin/project-values/severities",
+        {
+            templateUrl: "admin/admin-project-values-severities.html",
+            section: "admin"
+        }
+    )
+    $routeProvider.when("/project/:pslug/admin/project-values/types",
+        {
+            templateUrl: "admin/admin-project-values-types.html",
+            section: "admin"
+        }
+    )
+    $routeProvider.when("/project/:pslug/admin/project-values/custom-fields",
+        {
+            templateUrl: "admin/admin-project-values-custom-fields.html",
+            section: "admin"
+        }
+    )
+
     $routeProvider.when("/project/:pslug/admin/memberships",
-        {templateUrl: "/partials/admin-memberships.html"})
+        {
+            templateUrl: "admin/admin-memberships.html",
+            section: "admin"
+        }
+    )
+    # Admin - Roles
     $routeProvider.when("/project/:pslug/admin/roles",
-        {templateUrl: "/partials/admin-roles.html"})
+        {
+            templateUrl: "admin/admin-roles.html",
+            section: "admin"
+        }
+    )
+
+    # Admin - Third Parties
+    $routeProvider.when("/project/:pslug/admin/third-parties/webhooks",
+        {
+            templateUrl: "admin/admin-third-parties-webhooks.html",
+            section: "admin"
+        }
+    )
+    $routeProvider.when("/project/:pslug/admin/third-parties/github",
+        {
+            templateUrl: "admin/admin-third-parties-github.html",
+            section: "admin"
+        }
+    )
+    $routeProvider.when("/project/:pslug/admin/third-parties/gitlab",
+        {
+            templateUrl: "admin/admin-third-parties-gitlab.html",
+            section: "admin"
+        }
+    )
+    $routeProvider.when("/project/:pslug/admin/third-parties/bitbucket",
+        {
+            templateUrl: "admin/admin-third-parties-bitbucket.html",
+            section: "admin"
+        }
+    )
+    # Admin - Contrib Plugins
+    $routeProvider.when("/project/:pslug/admin/contrib/:plugin",
+        {templateUrl: "contrib/main.html"})
 
     # User settings
-    $routeProvider.when("/project/:pslug/user-settings/user-profile",
-          {templateUrl: "/partials/user-profile.html"})
-    $routeProvider.when("/project/:pslug/user-settings/user-change-password",
-          {templateUrl: "/partials/user-change-password.html"})
-    $routeProvider.when("/project/:pslug/user-settings/user-avatar",
-          {templateUrl: "/partials/user-avatar.html"})
-    $routeProvider.when("/project/:pslug/user-settings/mail-notifications",
-          {templateUrl: "/partials/mail-notifications.html"})
+    $routeProvider.when("/user-settings/user-profile",
+        {templateUrl: "user/user-profile.html"})
+    $routeProvider.when("/user-settings/user-change-password",
+        {templateUrl: "user/user-change-password.html"})
+    $routeProvider.when("/user-settings/mail-notifications",
+        {templateUrl: "user/mail-notifications.html"})
     $routeProvider.when("/change-email/:email_token",
-          {templateUrl: "/partials/change-email.html"})
+        {templateUrl: "user/change-email.html"})
     $routeProvider.when("/cancel-account/:cancel_token",
-        {templateUrl: "/partials/cancel-account.html"})
+        {templateUrl: "user/cancel-account.html"})
+
+    # User profile
+    $routeProvider.when("/profile",
+        {
+            templateUrl: "profile/profile.html",
+            loader: true,
+            access: {
+                requiresLogin: true
+            },
+            controller: "Profile",
+            controllerAs: "vm"
+        }
+    )
+
+    $routeProvider.when("/profile/:slug",
+        {
+            templateUrl: "profile/profile.html",
+            loader: true,
+            controller: "Profile",
+            controllerAs: "vm"
+        }
+    )
 
     # Auth
     $routeProvider.when("/login",
-        {templateUrl: "/partials/login.html"})
+        {templateUrl: "auth/login.html"})
     $routeProvider.when("/register",
-        {templateUrl: "/partials/register.html"})
+        {templateUrl: "auth/register.html"})
     $routeProvider.when("/forgot-password",
-        {templateUrl: "/partials/forgot-password.html"})
+        {templateUrl: "auth/forgot-password.html"})
     $routeProvider.when("/change-password",
-        {templateUrl: "/partials/change-password-from-recovery.html"})
+        {templateUrl: "auth/change-password-from-recovery.html"})
     $routeProvider.when("/change-password/:token",
-        {templateUrl: "/partials/change-password-from-recovery.html"})
+        {templateUrl: "auth/change-password-from-recovery.html"})
     $routeProvider.when("/invitation/:token",
-        {templateUrl: "/partials/invitation.html"})
+        {templateUrl: "auth/invitation.html"})
 
     # Errors/Exceptions
     $routeProvider.when("/error",
-        {templateUrl: "/partials/error.html"})
+        {templateUrl: "error/error.html"})
     $routeProvider.when("/not-found",
-        {templateUrl: "/partials/not-found.html"})
+        {templateUrl: "error/not-found.html"})
     $routeProvider.when("/permission-denied",
-        {templateUrl: "/partials/permission-denied.html"})
+        {templateUrl: "error/permission-denied.html"})
 
-    $routeProvider.otherwise({redirectTo: '/not-found'})
-    $locationProvider.html5Mode(true)
+    $routeProvider.otherwise({redirectTo: "/not-found"})
+    $locationProvider.html5Mode({enabled: true, requireBase: false})
 
     defaultHeaders = {
         "Content-Type": "application/json"
-        "Accept-Language": "en"
+        "Accept-Language": window.taigaConfig.defaultLanguage || "en"
         "X-Session-Id": taiga.sessionId
     }
 
@@ -159,22 +344,75 @@ configure = ($routeProvider, $locationProvider, $httpProvider, $provide, $tgEven
     $tgEventsProvider.setSessionId(taiga.sessionId)
 
     # Add next param when user try to access to a secction need auth permissions.
-    authHttpIntercept = ($q, $location, $confirm, $navUrls, $lightboxService) ->
-        return (promise) ->
-            return promise.then null, (response) ->
-                if response.status == 0
-                    $lightboxService.closeAll()
-                    $location.path($navUrls.resolve("error"))
-                    $location.replace()
-                else if response.status == 401
-                    nextPath = $location.path()
-                    $location.url($navUrls.resolve("login")).search("next=#{nextPath}")
-                return $q.reject(response)
+    authHttpIntercept = ($q, $location, $navUrls, $lightboxService) ->
+        httpResponseError = (response) ->
+            if response.status == 0
+                $lightboxService.closeAll()
+                $location.path($navUrls.resolve("error"))
+                $location.replace()
+            else if response.status == 401
+                nextPath = $location.path()
+                $location.url($navUrls.resolve("login")).search("next=#{nextPath}")
 
-    $provide.factory("authHttpIntercept", ["$q", "$location", "$tgConfirm", "$tgNavUrls",
-                                           "lightboxService", authHttpIntercept])
-    $httpProvider.responseInterceptors.push('authHttpIntercept')
-    $httpProvider.interceptors.push('loaderInterceptor')
+            return $q.reject(response)
+
+        return {
+            responseError: httpResponseError
+        }
+
+    $provide.factory("authHttpIntercept", ["$q", "$location", "$tgNavUrls", "lightboxService",
+                                           authHttpIntercept])
+
+    $httpProvider.interceptors.push("authHttpIntercept")
+
+
+    loaderIntercept = ($q, loaderService) ->
+        return {
+            request: (config) ->
+                loaderService.logRequest()
+
+                return config
+
+            requestError: (rejection) ->
+                loaderService.logResponse()
+
+                return $q.reject(rejection)
+
+            responseError: (rejection) ->
+                loaderService.logResponse()
+
+                return $q.reject(rejection)
+
+            response: (response) ->
+                loaderService.logResponse()
+
+                return response
+        }
+
+
+    $provide.factory("loaderIntercept", ["$q", "tgLoader", loaderIntercept])
+
+    $httpProvider.interceptors.push("loaderIntercept")
+
+    # If there is an error in the version throw a notify error.
+    # IMPROVEiMENT: Move this version error handler to USs, issues and tasks repository
+    versionCheckHttpIntercept = ($q) ->
+        httpResponseError = (response) ->
+            if response.status == 400 && response.data.version
+                # HACK: to prevent circular dependencies with [$tgConfirm, $translate]
+                $injector = angular.element("body").injector()
+                $injector.invoke(["$tgConfirm", "$translate", ($confirm, $translate) =>
+                    versionErrorMsg = $translate.instant("ERROR.VERSION_ERROR")
+                    $confirm.notify("error", versionErrorMsg, null, 10000)
+                ])
+
+            return $q.reject(response)
+
+        return {responseError: httpResponseError}
+
+    $provide.factory("versionCheckHttpIntercept", ["$q", versionCheckHttpIntercept])
+
+    $httpProvider.interceptors.push("versionCheckHttpIntercept")
 
     window.checksley.updateValidators({
         linewidth: (val, width) ->
@@ -186,50 +424,145 @@ configure = ($routeProvider, $locationProvider, $httpProvider, $provide, $tgEven
             return valid
     })
 
-    window.checksley.updateMessages("default", {
-        linewidth: "The subject must have a maximum size of %s"
-    })
+    $compileProvider.debugInfoEnabled(window.taigaConfig.debugInfo || false)
 
-init = ($log, $i18n, $config, $rootscope, $auth, $events, $analytics) ->
-    $i18n.initialize($config.get("defaultLanguage"))
+    if localStorage.userInfo
+        userInfo = JSON.parse(localStorage.userInfo)
+
+    # i18n
+    preferedLangCode = userInfo?.lang || window.taigaConfig.defaultLanguage || "en"
+
+    $translateProvider
+        .useStaticFilesLoader({
+            prefix: "/locales/locale-",
+            suffix: ".json"
+        })
+        .addInterpolation('$translateMessageFormatInterpolation')
+        .preferredLanguage(preferedLangCode)
+
+    if not window.taigaConfig.debugInfo
+        $translateProvider.fallbackLanguage(preferedLangCode)
+
+
+i18nInit = (lang, $translate) ->
+    # i18n - moment.js
+    moment.locale(lang)
+
+    # i18n - checksley.js
+    messages = {
+        defaultMessage: $translate.instant("COMMON.FORM_ERRORS.DEFAULT_MESSAGE")
+        type: {
+            email: $translate.instant("COMMON.FORM_ERRORS.TYPE_EMAIL")
+            url: $translate.instant("COMMON.FORM_ERRORS.TYPE_URL")
+            urlstrict: $translate.instant("COMMON.FORM_ERRORS.TYPE_URLSTRICT")
+            number: $translate.instant("COMMON.FORM_ERRORS.TYPE_NUMBER")
+            digits: $translate.instant("COMMON.FORM_ERRORS.TYPE_DIGITS")
+            dateIso: $translate.instant("COMMON.FORM_ERRORS.TYPE_DATEISO")
+            alphanum: $translate.instant("COMMON.FORM_ERRORS.TYPE_ALPHANUM")
+            phone: $translate.instant("COMMON.FORM_ERRORS.TYPE_PHONE")
+        }
+        notnull: $translate.instant("COMMON.FORM_ERRORS.NOTNULL")
+        notblank: $translate.instant("COMMON.FORM_ERRORS.NOT_BLANK")
+        required: $translate.instant("COMMON.FORM_ERRORS.REQUIRED")
+        regexp: $translate.instant("COMMON.FORM_ERRORS.REGEXP")
+        min: $translate.instant("COMMON.FORM_ERRORS.MIN")
+        max: $translate.instant("COMMON.FORM_ERRORS.MAX")
+        range: $translate.instant("COMMON.FORM_ERRORS.RANGE")
+        minlength: $translate.instant("COMMON.FORM_ERRORS.MIN_LENGTH")
+        maxlength: $translate.instant("COMMON.FORM_ERRORS.MAX_LENGTH")
+        rangelength: $translate.instant("COMMON.FORM_ERRORS.RANGE_LENGTH")
+        mincheck: $translate.instant("COMMON.FORM_ERRORS.MIN_CHECK")
+        maxcheck: $translate.instant("COMMON.FORM_ERRORS.MAX_CHECK")
+        rangecheck: $translate.instant("COMMON.FORM_ERRORS.RANGE_CHECK")
+        equalto: $translate.instant("COMMON.FORM_ERRORS.EQUAL_TO")
+    }
+    checksley.updateMessages('default', messages)
+
+
+init = ($log, $rootscope, $auth, $events, $analytics, $translate, $location, $navUrls, $appTitle, projectService, loaderService) ->
     $log.debug("Initialize application")
 
+    # Taiga Plugins
+    $rootscope.contribPlugins = @.taigaContribPlugins
+    $rootscope.adminPlugins = _.where(@.taigaContribPlugins, {"type": "admin"})
+
+    $rootscope.$on "$translateChangeEnd", (e, ctx) ->
+        lang = ctx.language
+        i18nInit(lang, $translate)
+
+    # bluebird
+    Promise.setScheduler (cb) ->
+        $rootscope.$evalAsync(cb)
+
+    # Load user
     if $auth.isAuthenticated()
         $events.setupConnection()
+        user = $auth.getUser()
 
+    # Analytics
     $analytics.initialize()
 
+    $rootscope.$on '$routeChangeSuccess',  (event, next) ->
+        if next.access && next.access.requiresLogin
+            if !$auth.isAuthenticated()
+                $location.path($navUrls.resolve("login"))
+
+        projectService.setSection(next.section)
+
+        if next.params.pslug
+            projectService.setProject(next.params.pslug)
+
+        if next.title
+            $translate(next.title).then (text) => $appTitle.set(text)
+
+        if next.loader
+            loaderService.startWithAutoClose()
 
 modules = [
     # Main Global Modules
     "taigaBase",
     "taigaCommon",
     "taigaResources",
-    "taigaLocales",
+    "taigaResources2",
     "taigaAuth",
     "taigaEvents",
 
     # Specific Modules
+    "taigaHome",
+    "taigaNavigationBar",
+    "taigaProjects",
     "taigaRelatedTasks",
     "taigaBacklog",
     "taigaTaskboard",
-    "taigaKanban"
+    "taigaKanban",
     "taigaIssues",
     "taigaUserStories",
     "taigaTasks",
+    "taigaTeam",
     "taigaWiki",
     "taigaSearch",
     "taigaAdmin",
-    "taigaNavMenu",
     "taigaProject",
     "taigaUserSettings",
     "taigaFeedback",
     "taigaPlugins",
+    "taigaIntegrations",
+    "taigaComponents",
+    # new modules
+    "taigaProfile",
+    "taigaHome",
+    "taigaUserTimeline",
+
+    # template cache
+    "templates",
 
     # Vendor modules
     "ngRoute",
     "ngAnimate",
-]
+    "pascalprecht.translate",
+    "infinite-scroll",
+    "tgRepeat"
+].concat(_.map(@.taigaContribPlugins, (plugin) -> plugin.module))
 
 # Main module definition
 module = angular.module("taiga", modules)
@@ -240,17 +573,22 @@ module.config([
     "$httpProvider",
     "$provide",
     "$tgEventsProvider",
-    "tgLoaderProvider",
+    "$compileProvider",
+    "$translateProvider",
     configure
 ])
 
 module.run([
     "$log",
-    "$tgI18n",
-    "$tgConfig",
     "$rootScope",
     "$tgAuth",
     "$tgEvents",
     "$tgAnalytics",
+    "$translate",
+    "$tgLocation",
+    "$tgNavUrls",
+    "$appTitle",
+    "tgProjectService",
+    "tgLoader",
     init
 ])

@@ -29,25 +29,47 @@ module = angular.module("taigaBacklog")
 #############################################################################
 
 BacklogSprintDirective = ($repo, $rootscope) ->
+    sprintTableMinHeight = 50
+    slideOptions = {
+        duration: 500,
+        easing: 'linear'
+    }
+
+    refreshSprintTableHeight = (sprintTable) =>
+        if !sprintTable.find(".row").length
+            sprintTable.css("height", sprintTableMinHeight)
+        else
+            sprintTable.css("height", "auto")
+
+    toggleSprint = ($el) =>
+        sprintTable = $el.find(".sprint-table")
+        sprintArrow = $el.find(".icon-arrow-up")
+
+        sprintArrow.toggleClass('active')
+        sprintTable.toggleClass('open')
+
+        refreshSprintTableHeight(sprintTable)
+
     link = ($scope, $el, $attrs) ->
         $scope.$watch $attrs.tgBacklogSprint, (sprint) ->
             sprint = $scope.$eval($attrs.tgBacklogSprint)
 
-            if $scope.$first
-                $el.addClass("sprint-current")
-                $el.find(".sprint-table").addClass('open')
-            else if sprint.closed
+            if sprint.closed
                 $el.addClass("sprint-closed")
-            else if not $scope.$first and not sprint.closed
-                $el.addClass("sprint-old-open")
+            else
+                toggleSprint($el)
 
         # Event Handlers
         $el.on "click", ".sprint-name > .icon-arrow-up", (event) ->
-            target = $(event.currentTarget)
-            target.toggleClass('active')
-            $el.find(".sprint-table").toggleClass('open')
+            event.preventDefault()
+
+            toggleSprint($el)
+
+            $el.find(".sprint-table").slideToggle(slideOptions)
 
         $el.on "click", ".sprint-name > .icon-edit", (event) ->
+            event.preventDefault()
+
             sprint = $scope.$eval($attrs.tgBacklogSprint)
             $rootscope.$broadcast("sprintform:edit", sprint)
 
@@ -63,38 +85,12 @@ module.directive("tgBacklogSprint", ["$tgRepo", "$rootScope", BacklogSprintDirec
 ## Sprint Header Directive
 #############################################################################
 
-BacklogSprintHeaderDirective = ($navUrls) ->
-    template = _.template("""
-    <div class="sprint-name">
-        <a class="icon icon-arrow-up" href="" title="Compact Sprint"></a>
-
-        <% if(isVisible){ %>
-        <a href="<%- taskboardUrl %>" title="'Go to the taskboard of '<%- name %>'">
-            <span><%- name %></span>
-        </a>
-        <% } %>
-
-        <% if(isEditable){ %>
-        <a class="icon icon-edit" href="" title="Edit Sprint"></a>
-        <% } %>
-    </div>
-
-    <div class="sprint-summary">
-        <div class="sprint-date"><%- estimatedDateRange %></div>
-        <ul>
-            <li>
-                <span class="number"><%- closedPoints %></span>
-                <span class="description">closed</span>
-            </li>
-            <li>
-                <span class="number"><%- totalPoints %></span>
-                <span class="description">total</span>
-            </li>
-        </ul>
-    </div>
-    """)
+BacklogSprintHeaderDirective = ($navUrls, $template, $compile, $translate) ->
+    template = $template.get("backlog/sprint-header.html")
 
     link = ($scope, $el, $attrs, $model) ->
+        prettyDate = $translate.instant("BACKLOG.SPRINTS.DATE")
+
         isEditable = ->
             return $scope.project.my_permissions.indexOf("modify_milestone") != -1
 
@@ -105,8 +101,8 @@ BacklogSprintHeaderDirective = ($navUrls) ->
             taskboardUrl = $navUrls.resolve("project-taskboard",
                                             {project: $scope.project.slug, sprint: sprint.slug})
 
-            start = moment(sprint.estimated_start).format("DD MMM YYYY")
-            finish = moment(sprint.estimated_finish).format("DD MMM YYYY")
+            start = moment(sprint.estimated_start).format(prettyDate)
+            finish = moment(sprint.estimated_finish).format(prettyDate)
             estimatedDateRange = "#{start}-#{finish}"
 
             ctx = {
@@ -118,8 +114,13 @@ BacklogSprintHeaderDirective = ($navUrls) ->
                 isVisible: isVisible()
                 isEditable: isEditable()
             }
-            $el.html(template(ctx))
 
+            templateScope = $scope.$new()
+
+            _.assign(templateScope, ctx)
+
+            compiledTemplate = $compile(template)(templateScope)
+            $el.html(compiledTemplate)
 
         $scope.$watch $attrs.ngModel, (sprint) ->
             render(sprint)
@@ -136,4 +137,50 @@ BacklogSprintHeaderDirective = ($navUrls) ->
         require: "ngModel"
     }
 
-module.directive("tgBacklogSprintHeader", ["$tgNavUrls", "$tgRepo", "$rootScope", BacklogSprintHeaderDirective])
+module.directive("tgBacklogSprintHeader", ["$tgNavUrls", "$tgTemplate", "$compile", "$translate"
+                                           BacklogSprintHeaderDirective])
+
+
+#############################################################################
+## Toggle Closed Sprints Directive
+#############################################################################
+
+ToggleExcludeClosedSprintsVisualization = ($rootscope, $loading, $translate) ->
+    excludeClosedSprints = true
+
+    link = ($scope, $el, $attrs) ->
+        # insert loading wrapper
+        loadingElm = $("<div>")
+        $el.after(loadingElm)
+
+        # Event Handlers
+        $el.on "click", (event) ->
+            event.preventDefault()
+            excludeClosedSprints  = not excludeClosedSprints
+
+            $loading.start(loadingElm)
+
+            if excludeClosedSprints
+                $rootscope.$broadcast("backlog:unload-closed-sprints")
+            else
+                $rootscope.$broadcast("backlog:load-closed-sprints")
+
+        $scope.$on "$destroy", ->
+            $el.off()
+
+        $scope.$on "closed-sprints:reloaded", (ctx, sprints) =>
+            $loading.finish(loadingElm)
+
+            if sprints.length > 0
+                key = "BACKLOG.SPRINTS.ACTION_HIDE_CLOSED_SPRINTS"
+            else
+                key = "BACKLOG.SPRINTS.ACTION_SHOW_CLOSED_SPRINTS"
+
+            text = $translate.instant(key)
+
+            $el.find(".text").text(text)
+
+    return {link: link}
+
+module.directive("tgBacklogToggleClosedSprintsVisualization", ["$rootScope", "$tgLoading", "$translate",
+                                                               ToggleExcludeClosedSprintsVisualization])

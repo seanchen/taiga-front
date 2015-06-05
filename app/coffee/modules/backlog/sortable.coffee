@@ -39,25 +39,32 @@ deleteElement = (el) ->
     el.off()
     el.remove()
 
-BacklogSortableDirective = ($repo, $rs, $rootscope) ->
+BacklogSortableDirective = ($repo, $rs, $rootscope, $tgConfirm, $translate) ->
     # Notes about jquery bug:
     # http://stackoverflow.com/questions/5791886/jquery-draggable-shows-
     # helper-in-wrong-place-when-scrolled-down-page
 
     link = ($scope, $el, $attrs) ->
+        getUsIndex = (us) =>
+            return $(us).index(".backlog-table-body .row")
+
         bindOnce $scope, "project", (project) ->
             # If the user has not enough permissions we don't enable the sortable
             if not (project.my_permissions.indexOf("modify_us") > -1)
                 return
 
+            filterError = ->
+                text = $translate.instant("BACKLOG.SORTABLE_FILTER_ERROR")
+                $tgConfirm.notify("error", text)
+
             $el.sortable({
-                connectWith: ".sprint-table"
+                items: ".us-item-row",
+                cancel: ".popover"
+                connectWith: ".sprint"
                 containment: ".wrapper"
                 dropOnEmpty: true
                 placeholder: "row us-item-row us-item-drag sortable-placeholder"
-                # With scroll activated, it has strange behavior
-                # with not full screen browser window.
-                scroll: false
+                scroll: true
                 # A consequence of length of backlog user story item
                 # the default tolerance ("intersection") not works properly.
                 tolerance: "pointer"
@@ -67,11 +74,21 @@ BacklogSortableDirective = ($repo, $rs, $rootscope) ->
                 # position for revert).
                 revert: false
                 cursorAt: {right: 15}
+                stop: () ->
+                    if $el.hasClass("active-filters")
+                        $el.sortable("cancel")
+                        filterError()
             })
 
             $el.on "multiplesortreceive", (event, ui) ->
+                if $el.hasClass("active-filters")
+                    ui.source.sortable("cancel")
+                    filterError()
+
+                    return
+
                 itemUs = ui.item.scope().us
-                itemIndex = ui.item.index()
+                itemIndex = getUsIndex(ui.item)
 
                 deleteElement(ui.item)
 
@@ -83,17 +100,24 @@ BacklogSortableDirective = ($repo, $rs, $rootscope) ->
                 if $(ui.items[0]).parent().length == 0
                     return
 
+                if $el.hasClass("active-filters")
+                    return
+
                 items = _.sortBy ui.items, (item) ->
                     return $(item).index()
 
                 index = _.min _.map items, (item) ->
-                    return $(item).index()
+                    return getUsIndex(item)
 
                 us = _.map items, (item) ->
                     item = $(item)
                     itemUs = item.scope().us
 
-                    item.find('a').removeClass('noclick')
+                    # HACK: setTimeout prevents that firefox click
+                    # event fires just after drag ends
+                    setTimeout ( =>
+                        item.find('a').removeClass('noclick')
+                    ), 300
 
                     return itemUs
 
@@ -126,6 +150,7 @@ BacklogEmptySortableDirective = ($repo, $rs, $rootscope) ->
 
                     deleteElement(ui.item)
                     $scope.$emit("sprint:us:move", [itemUs], itemIndex, null)
+
                     ui.item.find('a').removeClass('noclick')
 
         $scope.$on "$destroy", ->
@@ -140,8 +165,10 @@ SprintSortableDirective = ($repo, $rs, $rootscope) ->
             # If the user has not enough permissions we don't enable the sortable
             if project.my_permissions.indexOf("modify_us") > -1
                 $el.sortable({
+                    scroll: true
                     dropOnEmpty: true
-                    connectWith: ".sprint-table,.backlog-table-body,.empty-backlog"
+                    items: ".sprint-table .milestone-us-item-row",
+                    connectWith: ".sprint,.backlog-table-body,.empty-backlog"
                 })
 
                 $el.on "multiplesortreceive", (event, ui) ->
@@ -156,7 +183,6 @@ SprintSortableDirective = ($repo, $rs, $rootscope) ->
                         itemUs = item.scope().us
 
                         deleteElement(item)
-                        item.find('a').removeClass('noclick')
 
                         return itemUs
 
@@ -169,8 +195,17 @@ SprintSortableDirective = ($repo, $rs, $rootscope) ->
 
                     itemUs = ui.item.scope().us
                     itemIndex = ui.item.index()
-                    ui.item.find('a').removeClass('noclick')
+
+                    # HACK: setTimeout prevents that firefox click
+                    # event fires just after drag ends
+                    setTimeout ( =>
+                        ui.item.find('a').removeClass('noclick')
+                    ), 300
+
                     $scope.$emit("sprint:us:move", [itemUs], itemIndex, $scope.sprint.id)
+
+                $el.on "sortstart", (event, ui) ->
+                    ui.item.find('a').addClass('noclick')
 
     return {link:link}
 
@@ -179,6 +214,8 @@ module.directive("tgBacklogSortable", [
     "$tgRepo",
     "$tgResources",
     "$rootScope",
+    "$tgConfirm",
+    "$translate",
     BacklogSortableDirective
 ])
 

@@ -24,14 +24,16 @@ bindOnce = @.taiga.bindOnce
 
 module = angular.module("taigaCommon")
 
+
 #############################################################################
 ## Date Range Directive (used mainly for sprint date range)
 #############################################################################
 
-DateRangeDirective = ->
+DateRangeDirective = ($translate) ->
     renderRange = ($el, first, second) ->
-        initDate = moment(first).format("DD MMM YYYY")
-        endDate = moment(second).format("DD MMM YYYY")
+        prettyDate = $translate.instant("BACKLOG.SPRINTS.DATE")
+        initDate = moment(first).format(prettyDate)
+        endDate = moment(second).format(prettyDate)
         $el.html("#{initDate}-#{endDate}")
 
     link = ($scope, $el, $attrs) ->
@@ -43,7 +45,75 @@ DateRangeDirective = ->
 
     return {link:link}
 
-module.directive("tgDateRange", DateRangeDirective)
+module.directive("tgDateRange", ["$translate", DateRangeDirective])
+
+
+#############################################################################
+## Date Selector Directive (using pikaday)
+#############################################################################
+
+DateSelectorDirective = ($rootscope, $translate) ->
+    link = ($scope, $el, $attrs, $model) ->
+        selectedDate = null
+
+        initialize = () ->
+            $el.picker = new Pikaday({
+                field: $el[0]
+                onSelect: (date) =>
+                    selectedDate = date
+                onOpen: =>
+                    $el.picker.setDate(selectedDate) if selectedDate?
+                i18n: {
+                    previousMonth: $translate.instant("COMMON.PICKERDATE.PREV_MONTH"),
+                    nextMonth:  $translate.instant("COMMON.PICKERDATE.NEXT_MONTH"),
+                    months: [$translate.instant("COMMON.PICKERDATE.MONTHS.JAN"),
+                             $translate.instant("COMMON.PICKERDATE.MONTHS.FEB"),
+                             $translate.instant("COMMON.PICKERDATE.MONTHS.MAR"),
+                             $translate.instant("COMMON.PICKERDATE.MONTHS.APR"),
+                             $translate.instant("COMMON.PICKERDATE.MONTHS.MAY"),
+                             $translate.instant("COMMON.PICKERDATE.MONTHS.JUN"),
+                             $translate.instant("COMMON.PICKERDATE.MONTHS.JUL"),
+                             $translate.instant("COMMON.PICKERDATE.MONTHS.AUG"),
+                             $translate.instant("COMMON.PICKERDATE.MONTHS.SEP"),
+                             $translate.instant("COMMON.PICKERDATE.MONTHS.OCT"),
+                             $translate.instant("COMMON.PICKERDATE.MONTHS.NOV"),
+                             $translate.instant("COMMON.PICKERDATE.MONTHS.DEC")],
+                    weekdays: [$translate.instant("COMMON.PICKERDATE.WEEK_DAYS.SUN"),
+                               $translate.instant("COMMON.PICKERDATE.WEEK_DAYS.MON"),
+                               $translate.instant("COMMON.PICKERDATE.WEEK_DAYS.TUE"),
+                               $translate.instant("COMMON.PICKERDATE.WEEK_DAYS.WED"),
+                               $translate.instant("COMMON.PICKERDATE.WEEK_DAYS.THU"),
+                               $translate.instant("COMMON.PICKERDATE.WEEK_DAYS.FRI"),
+                               $translate.instant("COMMON.PICKERDATE.WEEK_DAYS.SAT")],
+                    weekdaysShort: [$translate.instant("COMMON.PICKERDATE.WEEK_DAYS_SHORT.SUN"),
+                                    $translate.instant("COMMON.PICKERDATE.WEEK_DAYS_SHORT.MON"),
+                                    $translate.instant("COMMON.PICKERDATE.WEEK_DAYS_SHORT.TUE"),
+                                    $translate.instant("COMMON.PICKERDATE.WEEK_DAYS_SHORT.WED"),
+                                    $translate.instant("COMMON.PICKERDATE.WEEK_DAYS_SHORT.THU"),
+                                    $translate.instant("COMMON.PICKERDATE.WEEK_DAYS_SHORT.FRI"),
+                                    $translate.instant("COMMON.PICKERDATE.WEEK_DAYS_SHORT.SAT")]
+                },
+                isRTL: $translate.instant("COMMON.PICKERDATE.IS_RTL") == "true",
+                firstDay: parseInt($translate.instant("COMMON.PICKERDATE.FIRST_DAY_OF_WEEK"), 10),
+                format: $translate.instant("COMMON.PICKERDATE.FORMAT")
+            })
+
+        unbind = $rootscope.$on "$translateChangeEnd", (ctx) => initialize()
+
+        $scope.$watch $attrs.ngModel, (val) ->
+            initialize() if val? and not $el.picker
+            $el.picker.setDate(val) if val?
+
+        $scope.$on "$destroy", ->
+            $el.off()
+            unbind()
+
+    return {
+        link: link
+        require: "ngModel"
+    }
+
+module.directive("tgDateSelector", ["$rootScope", "$translate", DateSelectorDirective])
 
 
 #############################################################################
@@ -70,115 +140,140 @@ SprintProgressBarDirective = ->
 
             renderProgress($el, percentage, visual_percentage)
 
+        $scope.$on "$destroy", ->
+            $el.off()
+
     return {link: link}
 
 module.directive("tgSprintProgressbar", SprintProgressBarDirective)
 
 
 #############################################################################
-## Date Selector Directive (using pikaday)
+## Created-by display directive
 #############################################################################
 
-DateSelectorDirective =->
-    link = ($scope, $el, $attrs, $model) ->
-        selectedDate = null
-        $el.picker = new Pikaday({
-          field: $el[0]
-          format: "DD MMM YYYY"
-          onSelect: (date) =>
-              selectedDate = date
-          onOpen: =>
-              $el.picker.setDate(selectedDate) if selectedDate?
-        })
+CreatedByDisplayDirective = ($template, $compile, $translate)->
+    # Display the owner information (full name and photo) and the date of
+    # creation of an object (like USs, tasks and issues).
+    #
+    # Example:
+    #     div.us-created-by(tg-created-by-display, ng-model="us")
+    #
+    # Requirements:
+    #   - model object must have the attributes 'created_date' and
+    #     'owner'(ng-model)
+    #   - scope.usersById object is required.
 
-        $scope.$watch $attrs.ngModel, (val) ->
-            $el.picker.setDate(val) if val?
+    template = $template.get("common/components/created-by.html", true)
+
+    link = ($scope, $el, $attrs) ->
+        render = (model) ->
+            owner = $scope.usersById?[model.owner] or {
+                full_name_display: $translate.instant("COMMON.EXTERNAL_USER")
+                photo: "/images/unnamed.png"
+            }
+
+            html = template({
+                owner: owner
+                date: moment(model.created_date).format($translate.instant("COMMON.DATETIME"))
+            })
+
+            html = $compile(html)($scope)
+
+            $el.html(html)
+
+        bindOnce $scope, $attrs.ngModel, (model) ->
+            render(model) if model?
+
+        $scope.$on "$destroy", ->
+            $el.off()
 
     return {
         link: link
+        restrict: "EA"
         require: "ngModel"
     }
 
-module.directive("tgDateSelector", DateSelectorDirective)
+module.directive("tgCreatedByDisplay", ["$tgTemplate", "$compile", "$translate", CreatedByDisplayDirective])
 
 
 #############################################################################
 ## Watchers directive
 #############################################################################
 
-WatchersDirective = ($rootscope, $confirm) ->
-    # TODO: i18n
-    template = _.template("""
-    <div class="watchers-header">
-        <span class="title">watchers</span>
-        <% if (editable) { %>
-        <a href="" title="Add watcher" class="icon icon-plus add-watcher"></a>
-        <% } %>
-    </div>
-
-    <% _.each(watchers, function(watcher) { %>
-    <div class="watcher-single">
-        <div class="watcher-avatar">
-            <a class="avatar" href="" title="Assigned to">
-                <img src="<%= watcher.photo %>" alt="<%- watcher.full_name_display %>">
-            </a>
-        </div>
-        <div class="watcher-name">
-            <span>
-                <%- watcher.full_name_display %>
-            </span>
-
-            <% if (editable) { %>
-            <a class="icon icon-delete"
-               data-watcher-id="<%= watcher.id %>" href="" title="delete-watcher">
-            </a>
-            <% } %>
-        </div>
-    </div>
-    <% }); %>
-    """)
+WatchersDirective = ($rootscope, $confirm, $repo, $qqueue, $template, $compile, $translate) ->
+    # You have to include a div with the tg-lb-watchers directive in the page
+    # where use this directive
+    template = $template.get("common/components/watchers.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
-        editable = $attrs.editable?
+        isEditable = ->
+            return $scope.project?.my_permissions?.indexOf($attrs.requiredPerm) != -1
+
+        save = $qqueue.bindAdd (watchers) =>
+            item = $model.$modelValue.clone()
+            item.watchers = watchers
+            $model.$setViewValue(item)
+
+            promise = $repo.save($model.$modelValue)
+            promise.then ->
+                $confirm.notify("success")
+                watchers = _.map(watchers, (watcherId) -> $scope.usersById[watcherId])
+                renderWatchers(watchers)
+                $rootscope.$broadcast("object:updated")
+
+            promise.then null, ->
+                $model.$modelValue.revert()
+
+        deleteWatcher = $qqueue.bindAdd (watcherIds) =>
+            item = $model.$modelValue.clone()
+            item.watchers = watcherIds
+            $model.$setViewValue(item)
+
+            promise = $repo.save($model.$modelValue)
+            promise.then ->
+                $confirm.notify("success")
+                watchers = _.map(item.watchers, (watcherId) -> $scope.usersById[watcherId])
+                renderWatchers(watchers)
+                $rootscope.$broadcast("object:updated")
+            promise.then null, ->
+                item.revert()
+                $confirm.notify("error")
+
 
         renderWatchers = (watchers) ->
-            html = template({watchers: watchers, editable:editable})
+            ctx = {
+                watchers: watchers
+                isEditable: isEditable()
+            }
+
+            html = $compile(template(ctx))($scope)
             $el.html(html)
 
-            if watchers.length == 0
-                if editable
-                    $el.find(".title").text("Add watchers")
-                    $el.find(".watchers-header").addClass("no-watchers")
-                else
-                    $el.find(".watchers-header").hide()
-
-        $scope.$watch $attrs.ngModel, (item) ->
-            return if not item?
-            watchers = _.map(item.watchers, (watcherId) -> $scope.usersById[watcherId])
-            renderWatchers(watchers)
-
-        if not editable
-            $el.find(".add-watcher").remove()
+            if isEditable() and watchers.length == 0
+                $el.find(".title").text("Add watchers")
+                $el.find(".watchers-header").addClass("no-watchers")
 
         $el.on "click", ".icon-delete", (event) ->
             event.preventDefault()
+            return if not isEditable()
             target = angular.element(event.currentTarget)
             watcherId = target.data("watcher-id")
 
-            title = "Delete watcher"
+            title = $translate.instant("COMMON.WATCHERS.TITLE_LIGHTBOX_DELETE_WARTCHER")
             message = $scope.usersById[watcherId].full_name_display
 
             $confirm.askOnDelete(title, message).then (finish) =>
                 finish()
+
                 watcherIds = _.clone($model.$modelValue.watchers, false)
                 watcherIds = _.pull(watcherIds, watcherId)
 
-                item = $model.$modelValue.clone()
-                item.watchers = watcherIds
-                $model.$setViewValue(item)
+                deleteWatcher(watcherIds)
 
         $el.on "click", ".add-watcher", (event) ->
             event.preventDefault()
+            return if not isEditable()
             $scope.$apply ->
                 $rootscope.$broadcast("watcher:add", $model.$modelValue)
 
@@ -187,88 +282,350 @@ WatchersDirective = ($rootscope, $confirm) ->
             watchers.push(watcherId)
             watchers = _.uniq(watchers)
 
-            item = $model.$modelValue.clone()
-            item.watchers = watchers
+            save(watchers)
 
-            $model.$setViewValue(item)
+        $scope.$watch $attrs.ngModel, (item) ->
+            return if not item?
+            watchers = _.map(item.watchers, (watcherId) -> $scope.usersById[watcherId])
+            renderWatchers(watchers)
+
+        $scope.$on "$destroy", ->
+            $el.off()
 
     return {link:link, require:"ngModel"}
 
-module.directive("tgWatchers", ["$rootScope", "$tgConfirm", WatchersDirective])
+module.directive("tgWatchers", ["$rootScope", "$tgConfirm", "$tgRepo", "$tgQqueue", "$tgTemplate", "$compile",
+                                "$translate", WatchersDirective])
 
 
 #############################################################################
 ## Assigned to directive
 #############################################################################
 
-AssignedToDirective = ($rootscope, $confirm) ->
-    # TODO: i18n
-    template = _.template("""
-    <% if (assignedTo) { %>
-    <div class="user-avatar">
-        <img src="<%= assignedTo.photo %>" alt="<%- assignedTo.full_name_display %>" />
-    </div>
-    <% } %>
-
-    <div class="assigned-to">
-        <span class="assigned-title">Assigned to</span>
-
-        <a href="" title="edit assignment" class="user-assigned <% if (editable) { %> editable <% } %>">
-        <% if (assignedTo) { %>
-            <%- assignedTo.full_name_display %>
-        <% } else { %>
-            Not assigned
-        <% } %>
-        <% if (editable) { %>
-            <span class="icon icon-arrow-bottom"></span>
-        <% } %>
-        </a>
-        <% if (editable && assignedTo!==null) { %>
-        <a href="" title="delete assignment" class="icon icon-delete"></a>
-        <% } %>
-    </div>
-    """)
+AssignedToDirective = ($rootscope, $confirm, $repo, $loading, $qqueue, $template, $translate, $compile) ->
+    # You have to include a div with the tg-lb-assignedto directive in the page
+    # where use this directive
+    template = $template.get("common/components/assigned-to.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
-        editable = $attrs.editable?
+        isEditable = ->
+            return $scope.project?.my_permissions?.indexOf($attrs.requiredPerm) != -1
+
+        save = $qqueue.bindAdd (userId) =>
+            $model.$modelValue.assigned_to = userId
+
+            $loading.start($el)
+
+            promise = $repo.save($model.$modelValue)
+            promise.then ->
+                $loading.finish($el)
+                $confirm.notify("success")
+                renderAssignedTo($model.$modelValue)
+                $rootscope.$broadcast("object:updated")
+            promise.then null, ->
+                $model.$modelValue.revert()
+                $confirm.notify("error")
+                $loading.finish($el)
+
+            return promise
 
         renderAssignedTo = (issue) ->
             assignedToId = issue?.assigned_to
-            assignedTo = null
-            assignedTo = $scope.usersById[assignedToId] if assignedToId?
-            html = template({assignedTo: assignedTo, editable:editable})
+            assignedTo = if assignedToId? then $scope.usersById[assignedToId] else null
+
+            ctx = {
+                assignedTo: assignedTo
+                isEditable: isEditable()
+            }
+            html = $compile(template(ctx))($scope)
             $el.html(html)
+
+        $el.on "click", ".user-assigned", (event) ->
+            event.preventDefault()
+            return if not isEditable()
+            $scope.$apply ->
+                $rootscope.$broadcast("assigned-to:add", $model.$modelValue)
+
+        $el.on "click", ".icon-delete", (event) ->
+            event.preventDefault()
+            return if not isEditable()
+            title = $translate.instant("COMMON.ASSIGNED_TO.CONFIRM_UNASSIGNED")
+
+            $confirm.ask(title).then (finish) =>
+                finish()
+                $model.$modelValue.assigned_to  = null
+                save(null)
+
+        $scope.$on "assigned-to:added", (ctx, userId, item) ->
+            return if item.id != $model.$modelValue.id
+
+            save(userId)
 
         $scope.$watch $attrs.ngModel, (instance) ->
             renderAssignedTo(instance)
 
-        if editable
-            $el.on "click", ".user-assigned", (event) ->
-                event.preventDefault()
-                $scope.$apply ->
-                    $rootscope.$broadcast("assigned-to:add", $model.$modelValue)
-
-            $el.on "click", ".icon-delete", (event) ->
-                event.preventDefault()
-                title = "Delete assignetion"
-                message = ""
-
-                $confirm.askOnDelete(title, message).then (finish) =>
-                    finish()
-                    $model.$modelValue.assigned_to  = null
-                    renderAssignedTo($model.$modelValue)
-
-            $scope.$on "assigned-to:added", (ctx, userId) ->
-                $model.$modelValue.assigned_to = userId
-                renderAssignedTo($model.$modelValue)
+        $scope.$on "$destroy", ->
+            $el.off()
 
     return {
         link:link,
         require:"ngModel"
     }
 
+module.directive("tgAssignedTo", ["$rootScope", "$tgConfirm", "$tgRepo", "$tgLoading", "$tgQqueue", "$tgTemplate", "$translate", "$compile",
+                                  AssignedToDirective])
 
-module.directive("tgAssignedTo", ["$rootScope", "$tgConfirm", AssignedToDirective])
+
+#############################################################################
+## Block Button directive
+#############################################################################
+
+BlockButtonDirective = ($rootscope, $loading, $template) ->
+    template = $template.get("common/components/block-button.html")
+
+    link = ($scope, $el, $attrs, $model) ->
+        isEditable = ->
+            return $scope.project.my_permissions.indexOf("modify_us") != -1
+
+        $scope.$watch $attrs.ngModel, (item) ->
+            return if not item
+
+            if isEditable()
+                $el.find('.item-block').addClass('editable')
+
+            if item.is_blocked
+                $el.find('.item-block').hide()
+                $el.find('.item-unblock').show()
+            else
+                $el.find('.item-block').show()
+                $el.find('.item-unblock').hide()
+
+        $el.on "click", ".item-block", (event) ->
+            event.preventDefault()
+            $rootscope.$broadcast("block", $model.$modelValue)
+
+        $el.on "click", ".item-unblock", (event) ->
+            event.preventDefault()
+            $loading.start($el.find(".item-unblock"))
+            finish = ->
+                $loading.finish($el.find(".item-unblock"))
+
+            $rootscope.$broadcast("unblock", $model.$modelValue, finish)
+
+        $scope.$on "$destroy", ->
+            $el.off()
+
+    return {
+        link: link
+        restrict: "EA"
+        require: "ngModel"
+        template: template
+    }
+
+module.directive("tgBlockButton", ["$rootScope", "$tgLoading", "$tgTemplate", BlockButtonDirective])
+
+
+#############################################################################
+## Delete Button directive
+#############################################################################
+
+DeleteButtonDirective = ($log, $repo, $confirm, $location, $template) ->
+    template = $template.get("common/components/delete-button.html")
+
+    link = ($scope, $el, $attrs, $model) ->
+        if not $attrs.onDeleteGoToUrl
+            return $log.error "DeleteButtonDirective requires on-delete-go-to-url set in scope."
+        if not $attrs.onDeleteTitle
+            return $log.error "DeleteButtonDirective requires on-delete-title set in scope."
+
+        $el.on "click", ".button", (event) ->
+            title = $attrs.onDeleteTitle
+            subtitle = $model.$modelValue.subject
+
+            $confirm.askOnDelete(title, subtitle).then (finish) =>
+                promise = $repo.remove($model.$modelValue)
+                promise.then =>
+                    finish()
+                    url = $scope.$eval($attrs.onDeleteGoToUrl)
+                    $location.path(url)
+                promise.then null, =>
+                    finish(false)
+                    $confirm.notify("error")
+
+        $scope.$on "$destroy", ->
+            $el.off()
+
+    return {
+        link: link
+        restrict: "EA"
+        require: "ngModel"
+        template: template
+    }
+
+module.directive("tgDeleteButton", ["$log", "$tgRepo", "$tgConfirm", "$tgLocation", "$tgTemplate", DeleteButtonDirective])
+
+
+#############################################################################
+## Editable subject directive
+#############################################################################
+
+EditableSubjectDirective = ($rootscope, $repo, $confirm, $loading, $qqueue, $template) ->
+    template = $template.get("common/components/editable-subject.html")
+
+    link = ($scope, $el, $attrs, $model) ->
+
+        $scope.$on "object:updated", () ->
+            $el.find('.edit-subject').hide()
+            $el.find('.view-subject').show()
+
+        isEditable = ->
+            return $scope.project.my_permissions.indexOf($attrs.requiredPerm) != -1
+
+        save = $qqueue.bindAdd (subject) =>
+            $model.$modelValue.subject = subject
+
+            $loading.start($el.find('.save-container'))
+
+            promise = $repo.save($model.$modelValue)
+            promise.then ->
+                $confirm.notify("success")
+                $rootscope.$broadcast("object:updated")
+                $el.find('.edit-subject').hide()
+                $el.find('.view-subject').show()
+            promise.then null, ->
+                $confirm.notify("error")
+            promise.finally ->
+                $loading.finish($el.find('.save-container'))
+
+            return promise
+
+        $el.click ->
+            return if not isEditable()
+            $el.find('.edit-subject').show()
+            $el.find('.view-subject').hide()
+            $el.find('input').focus()
+
+        $el.on "click", ".save", ->
+            subject = $scope.item.subject
+            save(subject)
+
+        $el.on "keyup", "input", (event) ->
+            if event.keyCode == 13
+                subject = $scope.item.subject
+                save(subject)
+            else if event.keyCode == 27
+                $scope.$apply () => $model.$modelValue.revert()
+
+                $el.find('div.edit-subject').hide()
+                $el.find('div.view-subject').show()
+
+        $el.find('div.edit-subject').hide()
+        $el.find('div.view-subject span.edit').hide()
+
+        $scope.$watch $attrs.ngModel, (value) ->
+            return if not value
+            $scope.item = value
+
+            if not isEditable()
+                $el.find('.view-subject .edit').remove()
+
+        $scope.$on "$destroy", ->
+            $el.off()
+
+
+    return {
+        link: link
+        restrict: "EA"
+        require: "ngModel"
+        template: template
+    }
+
+module.directive("tgEditableSubject", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", "$tgQqueue",
+                                       "$tgTemplate", EditableSubjectDirective])
+
+
+#############################################################################
+## Editable subject directive
+#############################################################################
+
+EditableDescriptionDirective = ($rootscope, $repo, $confirm, $compile, $loading, $selectedText, $qqueue, $template) ->
+    template = $template.get("common/components/editable-description.html")
+    noDescriptionMegEditMode = $template.get("common/components/editable-description-msg-edit-mode.html")
+    noDescriptionMegReadMode = $template.get("common/components/editable-description-msg-read-mode.html")
+
+    link = ($scope, $el, $attrs, $model) ->
+        $el.find('.edit-description').hide()
+        $el.find('.view-description .edit').hide()
+
+        $scope.$on "object:updated", () ->
+            $el.find('.edit-description').hide()
+            $el.find('.view-description').show()
+
+        isEditable = ->
+            return $scope.project.my_permissions.indexOf($attrs.requiredPerm) != -1
+
+        save = $qqueue.bindAdd (description) =>
+            $model.$modelValue.description = description
+
+            $loading.start($el.find('.save-container'))
+            promise = $repo.save($model.$modelValue)
+            promise.then ->
+                $confirm.notify("success")
+                $rootscope.$broadcast("object:updated")
+                $el.find('.edit-description').hide()
+                $el.find('.view-description').show()
+            promise.then null, ->
+                $confirm.notify("error")
+            promise.finally ->
+                $loading.finish($el.find('.save-container'))
+
+        $el.on "mouseup", ".view-description", (event) ->
+            # We want to dettect the a inside the div so we use the target and
+            # not the currentTarget
+            target = angular.element(event.target)
+            return if not isEditable()
+            return if target.is('a')
+            return if $selectedText.get().length
+
+            $el.find('.edit-description').show()
+            $el.find('.view-description').hide()
+            $el.find('textarea').focus()
+
+        $el.on "click", ".save", (e) ->
+            e.preventDefault()
+
+            description = $scope.item.description
+            save(description)
+
+        $el.on "keydown", "textarea", (event) ->
+            if event.keyCode == 27
+                $scope.$apply () => $scope.item.revert()
+                $el.find('.edit-description').hide()
+                $el.find('.view-description').show()
+
+        $scope.$watch $attrs.ngModel, (value) ->
+            return if not value
+            $scope.item = value
+
+            if isEditable()
+                $el.find('.view-description .edit').show()
+                $el.find('.view-description .us-content').addClass('editable')
+                $scope.noDescriptionMsg = $compile(noDescriptionMegEditMode)($scope)
+            else
+                $scope.noDescriptionMsg = $compile(noDescriptionMegReadMode)($scope)
+
+        $scope.$on "$destroy", ->
+            $el.off()
+
+    return {
+        link: link
+        restrict: "EA"
+        require: "ngModel"
+        template: template
+    }
+
+module.directive("tgEditableDescription", ["$rootScope", "$tgRepo", "$tgConfirm", "$compile", "$tgLoading",
+                                            "$selectedText", "$tgQqueue", "$tgTemplate", EditableDescriptionDirective])
 
 
 #############################################################################
@@ -278,13 +635,15 @@ module.directive("tgAssignedTo", ["$rootScope", "$tgConfirm", AssignedToDirectiv
 ##       completely bindonce, they only serves for visualization of data.
 #############################################################################
 
-ListItemIssueStatusDirective = ->
+ListItemUsStatusDirective = ->
     link = ($scope, $el, $attrs) ->
-        issue = $scope.$eval($attrs.tgListitemIssueStatus)
-        bindOnce $scope, "issueStatusById", (issueStatusById) ->
-            $el.html(issueStatusById[issue.status].name)
+        us = $scope.$eval($attrs.tgListitemUsStatus)
+        bindOnce $scope, "usStatusById", (usStatusById) ->
+            $el.html(usStatusById[us.status].name)
 
     return {link:link}
+
+module.directive("tgListitemUsStatus", ListItemUsStatusDirective)
 
 
 ListItemTaskStatusDirective = ->
@@ -295,23 +654,11 @@ ListItemTaskStatusDirective = ->
 
     return {link:link}
 
-
-ListItemUsStatusDirective = ->
-    link = ($scope, $el, $attrs) ->
-        us = $scope.$eval($attrs.tgListitemUsStatus)
-        bindOnce $scope, "usStatusById", (usStatusById) ->
-            $el.html(usStatusById[us.status].name)
-
-    return {link:link}
+module.directive("tgListitemTaskStatus", ListItemTaskStatusDirective)
 
 
-ListItemAssignedtoDirective = ->
-    template = _.template("""
-    <figure class="avatar">
-        <img src="<%= imgurl %>" alt="<%- name %>"/>
-        <figcaption><%- name %></figcaption>
-    </figure>
-    """)
+ListItemAssignedtoDirective = ($template) ->
+    template = $template.get("common/components/list-item-assigned-to-avatar.html", true)
 
     link = ($scope, $el, $attrs) ->
         bindOnce $scope, "membersById", (membersById) ->
@@ -327,61 +674,21 @@ ListItemAssignedtoDirective = ->
 
     return {link:link}
 
+module.directive("tgListitemAssignedto", ["$tgTemplate", ListItemAssignedtoDirective])
 
-ListItemPriorityDirective = ->
-    template = """
-    <div class="level"></div>
-    """
 
+ListItemIssueStatusDirective = ->
     link = ($scope, $el, $attrs) ->
-        render = (priorityById, issue) ->
-            priority = priorityById[issue.priority]
-            domNode = $el.find(".level")
-            domNode.css("background-color", priority.color)
-            domNode.attr("title", priority.name)
+        issue = $scope.$eval($attrs.tgListitemIssueStatus)
+        bindOnce $scope, "issueStatusById", (issueStatusById) ->
+            $el.html(issueStatusById[issue.status].name)
 
-        bindOnce $scope, "priorityById", (priorityById) ->
-            issue = $scope.$eval($attrs.tgListitemPriority)
-            render(priorityById, issue)
+    return {link:link}
 
-        $scope.$watch $attrs.tgListitemPriority, (issue) ->
-            render($scope.priorityById, issue)
+module.directive("tgListitemIssueStatus", ListItemIssueStatusDirective)
 
-    return {
-        link: link
-        template: template
-    }
-
-
-ListItemSeverityDirective = ->
-    template = """
-    <div class="level"></div>
-    """
-
-    link = ($scope, $el, $attrs) ->
-        render = (severityById, issue) ->
-            severity = severityById[issue.severity]
-            domNode = $el.find(".level")
-            domNode.css("background-color", severity.color)
-            domNode.attr("title", severity.name)
-
-        bindOnce $scope, "severityById", (severityById) ->
-            issue = $scope.$eval($attrs.tgListitemSeverity)
-            render(severityById, issue)
-
-        $scope.$watch $attrs.tgListitemSeverity, (issue) ->
-            render($scope.severityById, issue)
-
-    return {
-        link: link
-        template: template
-    }
 
 ListItemTypeDirective = ->
-    template = """
-    <div class="level"></div>
-    """
-
     link = ($scope, $el, $attrs) ->
         render = (issueTypeById, issue) ->
             type = issueTypeById[issue.type]
@@ -398,18 +705,64 @@ ListItemTypeDirective = ->
 
     return {
         link: link
-        template: template
+        templateUrl: "common/components/level.html"
     }
+
+module.directive("tgListitemType", ListItemTypeDirective)
+
+
+ListItemPriorityDirective = ->
+    link = ($scope, $el, $attrs) ->
+        render = (priorityById, issue) ->
+            priority = priorityById[issue.priority]
+            domNode = $el.find(".level")
+            domNode.css("background-color", priority.color)
+            domNode.attr("title", priority.name)
+
+        bindOnce $scope, "priorityById", (priorityById) ->
+            issue = $scope.$eval($attrs.tgListitemPriority)
+            render(priorityById, issue)
+
+        $scope.$watch $attrs.tgListitemPriority, (issue) ->
+            render($scope.priorityById, issue)
+
+    return {
+        link: link
+        templateUrl: "common/components/level.html"
+    }
+
+module.directive("tgListitemPriority", ListItemPriorityDirective)
+
+
+ListItemSeverityDirective = ->
+    link = ($scope, $el, $attrs) ->
+        render = (severityById, issue) ->
+            severity = severityById[issue.severity]
+            domNode = $el.find(".level")
+            domNode.css("background-color", severity.color)
+            domNode.attr("title", severity.name)
+
+        bindOnce $scope, "severityById", (severityById) ->
+            issue = $scope.$eval($attrs.tgListitemSeverity)
+            render(severityById, issue)
+
+        $scope.$watch $attrs.tgListitemSeverity, (issue) ->
+            render($scope.severityById, issue)
+
+    return {
+        link: link
+        templateUrl: "common/components/level.html"
+    }
+
+module.directive("tgListitemSeverity", ListItemSeverityDirective)
 
 
 #############################################################################
 ## Progress bar directive
 #############################################################################
 
-TgProgressBarDirective = ->
-    template = _.template("""
-        <div class="current-progress" style="width: <%- percentage %>%"></div>
-    """)
+TgProgressBarDirective = ($template) ->
+    template = $template.get("common/components/progress-bar.html", true)
 
     render = (el, percentage) ->
         el.html(template({percentage: percentage}))
@@ -427,42 +780,29 @@ TgProgressBarDirective = ->
 
     return {link: link}
 
+module.directive("tgProgressBar", ["$tgTemplate", TgProgressBarDirective])
+
 
 #############################################################################
 ## Main title directive
 #############################################################################
 
-TgMainTitleDirective = ->
-    template = _.template("""
-        <span class="project-name"><%- projectName %></span>
-        <span class="green"><%- sectionName %></span>
-    """)
-
-    render = (el, projectName, sectionName) ->
-        el.html(template({
-            projectName: projectName
-            sectionName: sectionName
-        }))
+TgMainTitleDirective = ($translate) ->
     link = ($scope, $el, $attrs) ->
-        element = angular.element($el)
-        $scope.$watch "project", (project) ->
-            render($el, project.name, $scope.sectionName) if project
-
-        $scope.$on "project:loaded", (ctx, project) =>
-            render($el, project.name, $scope.sectionName)
+        $attrs.$observe "i18nSectionName", (i18nSectionName) ->
+            trans = $translate(i18nSectionName)
+            trans.then (sectionName) -> $scope.sectionName = sectionName
+            trans.catch (sectionName) -> $scope.sectionName = sectionName
 
         $scope.$on "$destroy", ->
             $el.off()
 
-    return {link: link}
+    return {
+        link: link
+        templateUrl: "common/components/main-title.html"
+        scope: {
+            projectName : "=projectName"
+        }
+    }
 
-
-module.directive("tgListitemType", ListItemTypeDirective)
-module.directive("tgListitemIssueStatus", ListItemIssueStatusDirective)
-module.directive("tgListitemAssignedto", ListItemAssignedtoDirective)
-module.directive("tgListitemPriority", ListItemPriorityDirective)
-module.directive("tgListitemSeverity", ListItemSeverityDirective)
-module.directive("tgListitemTaskStatus", ListItemTaskStatusDirective)
-module.directive("tgListitemUsStatus", ListItemUsStatusDirective)
-module.directive("tgProgressBar", TgProgressBarDirective)
-module.directive("tgMainTitle", TgMainTitleDirective)
+module.directive("tgMainTitle", ["$translate",  TgMainTitleDirective])

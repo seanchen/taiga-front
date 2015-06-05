@@ -32,6 +32,19 @@ toString = @.taiga.toString
 #############################################################################
 
 class PageMixin
+    fillUsersAndRoles: (users, roles) ->
+        activeUsers = _.filter(users, (user) => user.is_active)
+        @scope.activeUsers = _.sortBy(activeUsers, "full_name_display")
+        @scope.activeUsersById = groupBy(@scope.activeUsers, (e) -> e.id)
+
+        @scope.users = _.sortBy(users, "full_name_display")
+        @scope.usersById = groupBy(@scope.users, (e) -> e.id)
+
+        @scope.roles = _.sortBy(roles, "order")
+        availableRoles = _(@scope.project.memberships).map("role").uniq().value()
+        @scope.computableRoles = _(roles).filter("computable")
+                                         .filter((x) -> _.contains(availableRoles, x.id))
+                                         .value()
     loadUsersAndRoles: ->
         promise = @q.all([
             @rs.projects.usersList(@scope.projectId),
@@ -40,16 +53,7 @@ class PageMixin
 
         return promise.then (results) =>
             [users, roles] = results
-
-            @scope.users = _.sortBy(users, "full_name_display")
-            @scope.usersById = groupBy(@scope.users, (e) -> e.id)
-
-            @scope.roles = _.sortBy(roles, "order")
-            availableRoles = _(@scope.project.memberships).map("role").uniq().value()
-            @scope.computableRoles = _(roles).filter("computable")
-                                             .filter((x) -> _.contains(availableRoles, x.id))
-                                             .value()
-
+            @.fillUsersAndRoles(users, roles)
             return results
 
 taiga.PageMixin = PageMixin
@@ -58,7 +62,7 @@ taiga.PageMixin = PageMixin
 #############################################################################
 ## Filters Mixin
 #############################################################################
-# This mixin requires @location ($tgLocation) and @scope
+# This mixin requires @location ($tgLocation), and @scope
 
 class FiltersMixin
     selectFilter: (name, value, load=false) ->
@@ -69,12 +73,14 @@ class FiltersMixin
             existing = _.compact(existing)
             value = joinStr(",", _.uniq(existing))
 
-        location = if load then @location else @location.noreload(@scope)
-        location.search(name, value)
+        if !@location.isInCurrentRouteParams(name, value)
+            location = if load then @location else @location.noreload(@scope)
+            location.search(name, value)
 
     replaceFilter: (name, value, load=false) ->
-        location = if load then @location else @location.noreload(@scope)
-        location.search(name, value)
+        if !@location.isInCurrentRouteParams(name, value)
+            location = if load then @location else @location.noreload(@scope)
+            location.search(name, value)
 
     replaceAllFilters: (filters, load=false) ->
         location = if load then @location else @location.noreload(@scope)

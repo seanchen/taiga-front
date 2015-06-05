@@ -23,6 +23,17 @@ nl2br = (str) =>
     breakTag = '<br />'
     return (str + '').replace(/([^>\r\n]?)(\r\n|\n\r|\r|\n)/g, '$1' + breakTag + '$2')
 
+bindMethods = (object) =>
+    dependencies = _.keys(object)
+
+    methods = []
+
+    _.forIn object, (value, key) =>
+        if key not in dependencies
+            methods.push(key)
+
+    _.bindAll(object, methods)
+
 bindOnce = (scope, attr, continuation) =>
     val = scope.$eval(attr)
     if val != undefined
@@ -106,8 +117,10 @@ joinStr = (str, coll) ->
 debounce = (wait, func) ->
     return _.debounce(func, wait, {leading: true, trailing: false})
 
+
 debounceLeading = (wait, func) ->
     return _.debounce(func, wait, {leading: false, trailing: true})
+
 
 startswith = (str1, str2) ->
     return _.str.startsWith(str1, str2)
@@ -127,9 +140,41 @@ sizeFormat = (input, precision=1) ->
     size = (input / Math.pow(1024, number)).toFixed(precision)
     return  "#{size} #{units[number]}"
 
+stripTags = (str, exception) ->
+    if exception
+        pattern = new RegExp('<(?!' + exception + '\s*\/?)[^>]+>', 'gi')
+        return String(str).replace(pattern, '')
+    else
+        return String(str).replace(/<\/?[^>]+>/g, '')
+
+replaceTags = (str, tags, replace) ->
+    # open tag
+    pattern = new RegExp('<(' + tags + ')>', 'gi')
+    str = str.replace(pattern, '<' + replace + '>')
+
+    # close tag
+    pattern = new RegExp('<\/(' + tags + ')>', 'gi')
+    str = str.replace(pattern, '</' + replace + '>')
+
+    return str
+
+defineImmutableProperty = (obj, name, fn) =>
+    Object.defineProperty obj, name, {
+        get: () =>
+            if !_.isFunction(fn)
+                throw "defineImmutableProperty third param must be a function"
+
+            fn_result = fn()
+            if fn_result && _.isObject(fn_result)
+                if fn_result.size == undefined
+                    throw "defineImmutableProperty must return immutable data"
+
+            return fn_result
+    }
 
 taiga = @.taiga
 taiga.nl2br = nl2br
+taiga.bindMethods = bindMethods
 taiga.bindOnce = bindOnce
 taiga.mixOf = mixOf
 taiga.trim = trim
@@ -146,3 +191,6 @@ taiga.debounce = debounce
 taiga.debounceLeading = debounceLeading
 taiga.startswith = startswith
 taiga.sizeFormat = sizeFormat
+taiga.stripTags = stripTags
+taiga.replaceTags = replaceTags
+taiga.defineImmutableProperty = defineImmutableProperty

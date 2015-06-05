@@ -1,6 +1,8 @@
 .project-values-row {
-    @include table-flex(stretch, center, flex, row, wrap, center);
+    align-items: center;
     border-bottom: 1px solid $whitish;
+    display: flex;
+    justify-content: center;
     padding: 1rem;
     div {
         margin-left: 1rem;
@@ -11,40 +13,56 @@
         color: $gray-light;
         opacity: 0;
         &:hover {
-            @include transition (all .2s ease-in);
             color: $grayer;
+            transition: all .2s ease-in;
         }
     }
 }
 
 .project-values-header {
     @extend %bold;
-    border-bottom: 2px solid $gray-light;
+    border-bottom: 3px solid $whitish;
 }
 .project-values-body {
+    form {
+        &:last-child {
+            .project-values-row {
+                border: 0;
+            }
+        }
+    }
     .project-values-row {
         &:hover {
-            @include transition (background .2s ease-in);
             background: lighten($green-taiga, 60%);
             cursor: move;
+            transition: background .2s ease-in;
             .icon {
-                @include transition (opacity .2s ease-in);
                 opacity: 1;
+                transition: opacity .2s ease-in;
             }
         }
     }
 }
 
 .project-values-name {
-    @include table-flex-child(3, 0, 0);
+    flex-basis: 0;
+    flex-grow: 3;
 }
 .project-values-value {
-    @include table-flex-child(1, 0, 0);
+    flex-basis: 0;
+    flex-grow: 1;
+    .checksley-error-list {
+        left: 0;
+        right: auto;
+        top: 35px;
+        white-space: nowrap;
+    }
 }
 
 .project-values-isclosed,
 .project-values-settings {
-    @include table-flex-child(1, 0, 0);
+    flex-basis: 0;
+    flex-grow: 1;
     text-align: right;
 }
 
@@ -54,9 +72,9 @@
         color: $gray;
         margin-right: .5rem;
         &:hover {
-            @include transition(color .3s linear);
             color: $green-taiga;
-            &.icon-delete {
+            transition: color .3s linear;
+            .icon-delete {
                 color: $red;
             }
         }

@@ -1,24 +1,28 @@
 .wiki-summary {
-    @include clearfix();
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    div {
+        display: flex;
+        justify-content: space-between;
+        margin-right: 1rem;
+    }
+    .number {
+        line-height: 2rem;
+        top: 0;
+    }
+    .wiki-user-modification {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+    }
     figure {
-        float: left;
-        margin-right: .5rem;
-        vertical-align: sub;
+        margin-right: .3rem;
         width: 32px;
     }
-    .username-edition {
-        width: 240px;
-        span {
-            display: block;
-            float: none;
-        }
-        .username {
-            @extend %large;
-            color: $fresh-taiga;
-        }
-    }
-    .button {
-        color: $white;
-        float: right;
+    .username {
+        @extend %large;
+        color: $fresh-taiga;
+        white-space: nowrap;
     }
 }

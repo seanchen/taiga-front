@@ -28,10 +28,13 @@ resourceProvider = ($repo, $http, $urls) ->
     service.get = (id) ->
         return $repo.queryOne("memberships", id)
 
-    service.list = (projectId, filters) ->
+    service.list = (projectId, filters, enablePagination=true) ->
         params = {project: projectId}
         params = _.extend({}, params, filters or {})
-        return $repo.queryPaginated("memberships", params)
+        if enablePagination
+            return $repo.queryPaginated("memberships", params)
+
+        return $repo.queryMany("memberships", params, options={enablePagination:enablePagination})
 
     service.listByUser = (userId, filters) ->
         params = {user: userId}
@@ -42,9 +45,9 @@ resourceProvider = ($repo, $http, $urls) ->
         url = $urls.resolve("memberships")
         return $http.post("#{url}/#{id}/resend_invitation", {})
 
-    service.bulkCreateMemberships = (projectId, data) ->
+    service.bulkCreateMemberships = (projectId, data, invitation_extra_text) ->
         url = $urls.resolve("bulk-create-memberships")
-        params = {project_id: projectId, bulk_memberships: data}
+        params = {project_id: projectId, bulk_memberships: data, invitation_extra_text: invitation_extra_text}
         return $http.post(url, params)
 
     return (instance) ->

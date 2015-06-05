@@ -22,6 +22,7 @@
 taiga = @.taiga
 
 mixOf = @.taiga.mixOf
+bindMethods = @.taiga.bindMethods
 
 module = angular.module("taigaAdmin")
 
@@ -47,9 +48,8 @@ class MembershipsController extends mixOf(taiga.Controller, taiga.PageMixin, tai
 
     constructor: (@scope, @rootscope, @repo, @confirm, @rs, @params, @q,
                   @location, @navUrls, @analytics, @appTitle) ->
-        _.bindAll(@)
+        bindMethods(@)
 
-        @scope.sectionName = "Manage Members" #i18n
         @scope.project = {}
         @scope.filters = {}
 
@@ -65,7 +65,11 @@ class MembershipsController extends mixOf(taiga.Controller, taiga.PageMixin, tai
             @analytics.trackEvent("membership", "create", "create memberships on admin", 1)
 
     loadProject: ->
-        return @rs.projects.get(@scope.projectId).then (project) =>
+        return @rs.projects.getBySlug(@params.pslug).then (project) =>
+            if not project.i_am_owner
+                @location.path(@navUrls.resolve("permission-denied"))
+
+            @scope.projectId = project.id
             @scope.project = project
             @scope.$emit('project:loaded', project)
             return project
@@ -73,20 +77,20 @@ class MembershipsController extends mixOf(taiga.Controller, taiga.PageMixin, tai
     loadMembers: ->
         httpFilters = @.getUrlFilters()
         return @rs.memberships.list(@scope.projectId, httpFilters).then (data) =>
-            @scope.memberships = data.models
+            @scope.memberships = _.filter(data.models, (membership) ->
+                                    membership.user == null or membership.is_user_active)
             @scope.page = data.current
             @scope.count = data.count
             @scope.paginatedBy = data.paginatedBy
             return data
 
     loadInitialData: ->
-        promise = @repo.resolve({pslug: @params.pslug}).then (data) =>
-            @scope.projectId = data.project
-            return data
+        promise = @.loadProject()
+        promise.then =>
+            @.loadUsersAndRoles()
+            @.loadMembers()
 
-        return promise.then(=> @.loadProject())
-                      .then(=> @.loadUsersAndRoles())
-                      .then(=> @.loadMembers())
+        return promise
 
     getUrlFilters: ->
         filters = _.pick(@location.search(), "page")
@@ -104,40 +108,8 @@ module.controller("MembershipsController", MembershipsController)
 ## Member Avatar Directive
 #############################################################################
 
-paginatorTemplate = """
-<ul class="paginator">
-    <% if (showPrevious) { %>
-    <li class="previous">
-        <a href="" class="previous next_prev_button" class="disabled">
-            <span i18next="pagination.prev">Prev</span>
-        </a>
-    </li>
-    <% } %>
-
-    <% _.each(pages, function(item) { %>
-    <li class="<%= item.classes %>">
-        <% if (item.type === "page") { %>
-        <a href="" data-pagenum="<%= item.num %>"><%= item.num %></a>
-        <% } else if (item.type === "page-active") { %>
-        <span class="active"><%= item.num %></span>
-        <% } else { %>
-        <span>...</span>
-        <% } %>
-    </li>
-    <% }); %>
-
-    <% if (showNext) { %>
-    <li class="next">
-        <a href="" class="next next_prev_button" class="disabled">
-            <span i18next="pagination.next">Next</span>
-        </a>
-    </li>
-    <% } %>
-</ul>
-"""
-
-MembershipsDirective = ->
-    template = _.template(paginatorTemplate)
+MembershipsDirective = ($template) ->
+    template = $template.get("admin/admin-membership-paginator.html", true)
 
     linkPagination = ($scope, $el, $attrs, $ctrl) ->
         # Constants
@@ -214,6 +186,7 @@ MembershipsDirective = ->
                 $ctrl.selectFilter("page", pagenum)
                 $ctrl.loadMembers()
 
+
     link = ($scope, $el, $attrs) ->
         $ctrl = $el.controller()
         linkPagination($scope, $el, $attrs, $ctrl)
@@ -223,23 +196,15 @@ MembershipsDirective = ->
 
     return {link:link}
 
-module.directive("tgMemberships", MembershipsDirective)
+module.directive("tgMemberships", ["$tgTemplate", MembershipsDirective])
 
 
 #############################################################################
 ## Member Avatar Directive
 #############################################################################
 
-MembershipsRowAvatarDirective = ($log) ->
-    template = _.template("""
-    <figure class="avatar">
-        <img src="<%= imgurl %>" alt="<%- full_name %>">
-        <figcaption>
-            <span class="name"><%- full_name %></span>
-            <span class="email"><%- email %></span>
-        </figcaption>
-    </figure>
-    """)
+MembershipsRowAvatarDirective = ($log, $template) ->
+    template = $template.get("admin/memberships-row-avatar.html", true)
 
     link = ($scope, $el, $attrs) ->
         render = (member) ->
@@ -264,28 +229,23 @@ MembershipsRowAvatarDirective = ($log) ->
     return {link: link}
 
 
-module.directive("tgMembershipsRowAvatar", ["$log", MembershipsRowAvatarDirective])
+module.directive("tgMembershipsRowAvatar", ["$log", "$tgTemplate", MembershipsRowAvatarDirective])
 
 
 #############################################################################
 ## Member IsAdminCheckbox Directive
 #############################################################################
 
-MembershipsRowAdminCheckboxDirective = ($log, $repo, $confirm) ->
-    template = _.template("""
-    <div class="check">
-        <input type="checkbox" id="<%- inputId %>" />
-        <div></div>
-        <span class="check-text check-yes">Yes</span>
-        <span class="check-text check-no">No</span>
-    </div>
-    """) # TODO: i18n
+MembershipsRowAdminCheckboxDirective = ($log, $repo, $confirm, $template, $compile) ->
+    template = $template.get("admin/admin-memberships-row-checkbox.html", true)
 
     link = ($scope, $el, $attrs) ->
         render = (member) ->
             ctx = {inputId: "is-admin-#{member.id}"}
 
             html = template(ctx)
+            html = $compile(html)($scope)
+
             $el.html(html)
 
         if not $attrs.tgMembershipsRowAdminCheckbox?
@@ -301,8 +261,10 @@ MembershipsRowAdminCheckboxDirective = ($log, $repo, $confirm) ->
             onSuccess = ->
                 $confirm.notify("success")
 
-            onError = ->
-                $confirm.notify("error")
+            onError = (data) ->
+                member.revert()
+                $el.find(":checkbox").prop("checked", member.is_owner)
+                $confirm.notify("error", data.is_owner[0])
 
             target = angular.element(event.currentTarget)
             member.is_owner = target.prop("checked")
@@ -315,7 +277,7 @@ MembershipsRowAdminCheckboxDirective = ($log, $repo, $confirm) ->
 
 
 module.directive("tgMembershipsRowAdminCheckbox", ["$log", "$tgRepo", "$tgConfirm",
-                                                   MembershipsRowAdminCheckboxDirective])
+    "$tgTemplate", "$compile", MembershipsRowAdminCheckboxDirective])
 
 
 #############################################################################
@@ -350,7 +312,7 @@ MembershipsRowRoleSelectorDirective = ($log, $repo, $confirm) ->
         member = $scope.$eval($attrs.tgMembershipsRowRoleSelector)
         html = render(member)
 
-        $el.on "click", "select", (event) =>
+        $el.on "change", "select", (event) =>
             onSuccess = ->
                 $confirm.notify("success")
 
@@ -378,32 +340,31 @@ module.directive("tgMembershipsRowRoleSelector", ["$log", "$tgRepo", "$tgConfirm
 ## Member Actions Directive
 #############################################################################
 
-MembershipsRowActionsDirective = ($log, $repo, $rs, $confirm) ->
-    activedTemplate = _.template("""
-    <div class="active">
-        Active
+MembershipsRowActionsDirective = ($log, $repo, $rs, $confirm, $compile, $translate) ->
+    activedTemplate = """
+    <div class="active", translate="ADMIN.MEMBERSHIP.STATUS_ACTIVE">
     </div>
     <a class="delete" href="">
         <span class="icon icon-delete"></span>
     </a>
-    """) # TODO: i18n
+    """
 
-    pendingTemplate = _.template("""
+    pendingTemplate = """
     <a class="pending" href="">
-        Pending
+        {{'ADMIN.MEMBERSHIP.STATUS_PENDING' | translate}}
         <span class="icon icon-reload"></span>
     </a>
-    <a class="delete" href="" title="Delete">
+    <a class="delete" href="">
         <span class="icon icon-delete"></span>
     </a>
-    """) # TODO: i18n
+    """
 
     link = ($scope, $el, $attrs) ->
         render = (member) ->
             if member.user
-                html = activedTemplate()
+                html = $compile(activedTemplate)($scope)
             else
-                html = pendingTemplate()
+                html = $compile(pendingTemplate)($scope)
 
             $el.html(html)
 
@@ -417,29 +378,34 @@ MembershipsRowActionsDirective = ($log, $repo, $rs, $confirm) ->
         $el.on "click", ".pending", (event) ->
             event.preventDefault()
             onSuccess = ->
-                # TODO: i18n
-                $confirm.notify("success", "We've sent the invitationi again to '#{$scope.member.email}'.")
+                text = $translate.instant("ADMIN.MEMBERSHIP.SUCCESS_SEND_INVITATION", {email: $scope.member.email})
+                $confirm.notify("success", text)
             onError = ->
-                $confirm.notify("error", "We haven't sent the invitation.") # TODO: i18n
+                text = $translate.instant("ADMIM.MEMBERSHIP.ERROR_SEND_INVITATION")
+                $confirm.notify("error", text)
 
             $rs.memberships.resendInvitation($scope.member.id).then(onSuccess, onError)
 
         $el.on "click", ".delete", (event) ->
             event.preventDefault()
 
-            title = "Delete member" # TODO: i18n
-            message = if member.user then member.full_name else "the invitation to #{member.email}" # TODO: i18n
+            title = $translate.instant("ADMIN.MEMBERSHIP.DELETE_MEMBER")
+            defaultMsg = $translate.instant("ADMIN.MEMBERSHIP.DEFAULT_DELETE_MESSAGE")
+            message = if member.user then member.full_name else defaultMsg
 
             $confirm.askOnDelete(title, message).then (finish) ->
                 onSuccess = ->
                     finish()
                     $ctrl.loadMembers()
-                    $confirm.notify("success", null, "We've deleted #{message}.") # TODO: i18n
+
+                    text = $translate.instant("ADMIN.MEMBERSHIP.SUCCESS_DELETE")
+                    $confirm.notify("success", null, text)
 
                 onError = ->
                     finish(false)
-                    # TODO: i18in
-                    $confirm.notify("error", null, "We have not been able to delete #{message}.")
+
+                    text = $translate.instant("ADMIN.MEMBERSHIP.ERROR_DELETE", {message: message})
+                    $confirm.notify("error", null, text)
 
                 $repo.remove(member).then(onSuccess, onError)
 
@@ -449,5 +415,4 @@ MembershipsRowActionsDirective = ($log, $repo, $rs, $confirm) ->
     return {link: link}
 
 
-module.directive("tgMembershipsRowActions", ["$log", "$tgRepo", "$tgResources", "$tgConfirm",
-                                             MembershipsRowActionsDirective])
+module.directive("tgMembershipsRowActions", ["$log", "$tgRepo", "$tgResources", "$tgConfirm", "$compile", "$translate", MembershipsRowActionsDirective])

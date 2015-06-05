@@ -29,7 +29,7 @@ module = angular.module("taigaBacklog")
 ## Creare/Edit Sprint Lightbox Directive
 #############################################################################
 
-CreateEditSprint = ($repo, $confirm, $rs, $rootscope, lightboxService, $loading) ->
+CreateEditSprint = ($repo, $confirm, $rs, $rootscope, lightboxService, $loading, $translate) ->
     link = ($scope, $el, attrs) ->
         hasErrors = false
         createSprint = true
@@ -41,8 +41,12 @@ CreateEditSprint = ($repo, $confirm, $rs, $rootscope, lightboxService, $loading)
             estimated_finish: null
         }
 
-        submit = (event) ->
+        submit = debounce 2000, (event) =>
+            event.preventDefault()
             target = angular.element(event.currentTarget)
+            prettyDate = $translate.instant("COMMON.PICKERDATE.FORMAT")
+
+            submitButton = $el.find(".submit-button")
             form = $el.find("form").checksley()
 
             if not form.validate()
@@ -55,27 +59,29 @@ CreateEditSprint = ($repo, $confirm, $rs, $rootscope, lightboxService, $loading)
             broadcastEvent = null
 
             if createSprint
-                newSprint.estimated_start = moment(newSprint.estimated_start).format("YYYY-MM-DD")
-                newSprint.estimated_finish = moment(newSprint.estimated_finish).format("YYYY-MM-DD")
+                newSprint.estimated_start = moment(newSprint.estimated_start, prettyDate).format("YYYY-MM-DD")
+                newSprint.estimated_finish = moment(newSprint.estimated_finish,prettyDate).format("YYYY-MM-DD")
                 promise = $repo.create("milestones", newSprint)
                 broadcastEvent = "sprintform:create:success"
             else
-                newSprint.setAttr("estimated_start", moment(newSprint.estimated_start).format("YYYY-MM-DD"))
-                newSprint.setAttr("estimated_finish", moment(newSprint.estimated_finish).format("YYYY-MM-DD"))
+                newSprint.setAttr("estimated_start",
+                                  moment(newSprint.estimated_start, prettyDate).format("YYYY-MM-DD"))
+                newSprint.setAttr("estimated_finish",
+                                  moment(newSprint.estimated_finish, prettyDate).format("YYYY-MM-DD"))
                 promise = $repo.save(newSprint)
                 broadcastEvent = "sprintform:edit:success"
 
-            $loading.start(target)
+            $loading.start(submitButton)
 
             promise.then (data) ->
-                $loading.finish(target)
+                $loading.finish(submitButton)
                 $scope.sprintsCounter += 1 if createSprint
                 $rootscope.$broadcast(broadcastEvent, data)
 
                 lightboxService.close($el)
 
             promise.then null, (data) ->
-                $loading.finish(target)
+                $loading.finish(submitButton)
 
                 form.setErrors(data)
                 if data._error_message
@@ -84,8 +90,7 @@ CreateEditSprint = ($repo, $confirm, $rs, $rootscope, lightboxService, $loading)
                     $confirm.notify("light-error", data.__all__[0])
 
         remove = ->
-            #TODO: i18n
-            title = "Delete sprint"
+            title = $translate.instant("LIGHTBOX.DELETE_SPRINT.TITLE")
             message = $scope.sprint.name
 
             $confirm.askOnDelete(title, message).then (finish) =>
@@ -101,7 +106,11 @@ CreateEditSprint = ($repo, $confirm, $rs, $rootscope, lightboxService, $loading)
                 $repo.remove($scope.sprint).then(onSuccess, onError)
 
         $scope.$on "sprintform:create", (event, projectId) ->
+            form = $el.find("form").checksley()
+            form.reset()
+
             createSprint = true
+            prettyDate = $translate.instant("COMMON.PICKERDATE.FORMAT")
             $scope.sprint.project = projectId
             $scope.sprint.name = null
             $scope.sprint.slug = null
@@ -113,35 +122,50 @@ CreateEditSprint = ($repo, $confirm, $rs, $rootscope, lightboxService, $loading)
                 estimatedStart = moment($scope.sprint.estimated_start)
             else if lastSprint?
                 estimatedStart = moment(lastSprint.estimated_finish)
-            $scope.sprint.estimated_start = estimatedStart.format("DD MMM YYYY")
+            $scope.sprint.estimated_start = estimatedStart.format(prettyDate)
 
             estimatedFinish = moment().add(2, "weeks")
             if $scope.sprint.estimated_finish
                 estimatedFinish = moment($scope.sprint.estimated_finish)
             else if lastSprint?
                 estimatedFinish = moment(lastSprint.estimated_finish).add(2, "weeks")
-            $scope.sprint.estimated_finish = estimatedFinish.format("DD MMM YYYY")
+            $scope.sprint.estimated_finish = estimatedFinish.format(prettyDate)
 
             lastSprintNameDom = $el.find(".last-sprint-name")
             if lastSprint?.name?
-                lastSprintNameDom.html(" last sprint is <strong> #{lastSprint.name} ;-) </strong>")
+                text = $translate.instant("LIGHTBOX.ADD_EDIT_SPRINT.LAST_SPRINT_NAME", {
+                            lastSprint: lastSprint.name})
+                lastSprintNameDom.html(text)
 
-            $el.find(".delete-sprint").hide()
-            $el.find(".title").text("New sprint") #TODO i18n
-            $el.find(".button-green").text("Create") #TODO i18n
+            $el.find(".delete-sprint").addClass("hidden")
+
+            text = $translate.instant("LIGHTBOX.ADD_EDIT_SPRINT.TITLE")
+            $el.find(".title").text(text)
+
+            text = $translate.instant("COMMON.CREATE")
+            $el.find(".button-green").text(text)
+
             lightboxService.open($el)
             $el.find(".sprint-name").focus()
+            $el.find(".last-sprint-name").removeClass("disappear")
 
         $scope.$on "sprintform:edit", (ctx, sprint) ->
             createSprint = false
+            prettyDate = $translate.instant("COMMON.PICKERDATE.FORMAT")
+
             $scope.$apply ->
                 $scope.sprint = sprint
-                $scope.sprint.estimated_start = moment($scope.sprint.estimated_start).format("DD MMM YYYY")
-                $scope.sprint.estimated_finish = moment($scope.sprint.estimated_finish).format("DD MMM YYYY")
+                $scope.sprint.estimated_start = moment($scope.sprint.estimated_start).format(prettyDate)
+                $scope.sprint.estimated_finish = moment($scope.sprint.estimated_finish).format(prettyDate)
 
-            $el.find(".delete-sprint").show()
-            $el.find(".title").text("Edit sprint") #TODO i18n
-            $el.find(".button-green").text("Save") #TODO i18n
+            $el.find(".delete-sprint").removeClass("hidden")
+
+            editSprint = $translate.instant("BACKLOG.EDIT_SPRINT")
+            $el.find(".title").text(editSprint)
+
+            save = $translate.instant("COMMON.SAVE")
+            $el.find(".button-green").text(save)
+
             lightboxService.open($el)
             $el.find(".sprint-name").focus().select()
             $el.find(".last-sprint-name").addClass("disappear")
@@ -152,9 +176,7 @@ CreateEditSprint = ($repo, $confirm, $rs, $rootscope, lightboxService, $loading)
             else
                 $el.find(".last-sprint-name").removeClass("disappear")
 
-        $el.on "click", ".button-green", debounce 2000, (event) ->
-            event.preventDefault()
-            submit(event)
+        $el.on "submit", "form", submit
 
         $el.on "click", ".delete-sprint .icon-delete", (event) ->
             event.preventDefault()
@@ -172,6 +194,7 @@ module.directive("tgLbCreateEditSprint", [
     "$tgResources",
     "$rootScope",
     "lightboxService"
-    "$tgLoading"
+    "$tgLoading",
+    "$translate",
     CreateEditSprint
 ])

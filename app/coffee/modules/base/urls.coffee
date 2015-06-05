@@ -30,7 +30,7 @@ class UrlsService extends taiga.Service
 
     constructor: (@config) ->
         @.urls = {}
-        @.mainUrl = config.get("api")
+        @.mainUrl = @config.get("api")
 
     update: (urls) ->
         @.urls = _.merge(@.urls, urls)
@@ -48,6 +48,14 @@ class UrlsService extends taiga.Service
             _.str.rtrim(@.mainUrl, "/"),
             _.str.ltrim(url, "/")
         ])
+
+    resolveAbsolute: ->
+        url = @.resolve.apply(@, arguments)
+        if (/^https?:\/\//i).test(url)
+            return url
+        if (/^\//).test(url)
+            return "#{window.location.protocol}//#{window.location.host}#{url}"
+        return "#{window.location.protocol}//#{window.location.host}/#{url}"
 
 
 module = angular.module("taigaBase")

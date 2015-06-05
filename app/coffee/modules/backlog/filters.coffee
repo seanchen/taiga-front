@@ -35,43 +35,9 @@ module = angular.module("taigaBacklog")
 ## Issues Filters Directive
 #############################################################################
 
-BacklogFiltersDirective = ($log, $location) ->
-    template = _.template("""
-    <% _.each(filters, function(f) { %>
-        <% if (f.selected) { %>
-        <a class="single-filter active"
-            data-type="<%= f.type %>"
-            data-id="<%= f.id %>">
-            <span class="name" <% if (f.color){ %>style="border-left: 3px solid <%= f.color %>;"<% } %>>
-                <%- f.name %>
-            </span>
-            <span class="number"><%- f.count %></span>
-        </a>
-        <% } else { %>
-        <a class="single-filter"
-            data-type="<%= f.type %>"
-            data-id="<%= f.id %>">
-            <span class="name" <% if (f.color){ %>style="border-left: 3px solid <%= f.color %>;"<% } %>>
-                <%- f.name %>
-            </span>
-            <span class="number"><%- f.count %></span>
-        </a>
-        <% } %>
-    <% }) %>
-    """)
-
-    templateSelected = _.template("""
-    <% _.each(filters, function(f) { %>
-    <a class="single-filter selected"
-       data-type="<%= f.type %>"
-       data-id="<%= f.id %>">
-        <span class="name" <% if (f.color){ %>style="border-left: 3px solid <%= f.color %>;"<% } %>>
-            <%- f.name %></span>
-        <span class="icon icon-delete"></span>
-    </a>
-    <% }) %>
-    """)
-
+BacklogFiltersDirective = ($log, $location, $templates) ->
+    template = $templates.get("backlog/filters.html", true)
+    templateSelected = $templates.get("backlog/filter-selected.html", true)
 
     link = ($scope, $el, $attrs) ->
         $ctrl = $el.closest(".wrapper").controller()
@@ -79,14 +45,14 @@ BacklogFiltersDirective = ($log, $location) ->
 
         showFilters = (title, type) ->
             $el.find(".filters-cats").hide()
-            $el.find(".filter-list").show()
+            $el.find(".filter-list").removeClass("hidden")
             $el.find("h2.breadcrumb").removeClass("hidden")
             $el.find("h2 a.subfilter span.title").html(title)
             $el.find("h2 a.subfilter span.title").prop("data-type", type)
 
         showCategories = ->
             $el.find(".filters-cats").show()
-            $el.find(".filter-list").hide()
+            $el.find(".filter-list").addClass("hidden")
             $el.find("h2.breadcrumb").addClass("hidden")
 
         initializeSelectedFilters = (filters) ->
@@ -100,10 +66,18 @@ BacklogFiltersDirective = ($log, $location) ->
             renderSelectedFilters()
 
         renderSelectedFilters = ->
-            html = templateSelected({filters:selectedFilters})
+            _.map selectedFilters, (f) =>
+                if f.color
+                    f.style = "border-left: 3px solid #{f.color}"
+
+            html = templateSelected({filters: selectedFilters})
             $el.find(".filters-applied").html(html)
 
         renderFilters = (filters) ->
+            _.map filters, (f) =>
+                if f.color
+                    f.style = "border-left: 3px solid #{f.color}"
+
             html = template({filters:filters})
             $el.find(".filter-list").html(html)
 
@@ -115,12 +89,10 @@ BacklogFiltersDirective = ($log, $location) ->
                 selectedFilters.push(filter)
                 $scope.$apply ->
                     $ctrl.selectFilter(type, id)
-                    $ctrl.filterVisibleUserstories()
             else
                 selectedFilters = _.reject(selectedFilters, filter)
                 $scope.$apply ->
                     $ctrl.unselectFilter(type, id)
-                    $ctrl.filterVisibleUserstories()
 
             renderSelectedFilters(selectedFilters)
 
@@ -143,6 +115,9 @@ BacklogFiltersDirective = ($log, $location) ->
         ## Angular Watchers
         $scope.$on "filters:loaded", (ctx, filters) ->
             initializeSelectedFilters(filters)
+
+        $scope.$on "filters:update", (ctx, filters) ->
+            renderFilters(filters)
 
         ## Dom Event Handlers
         $el.on "click", ".filters-cats > ul > li > a", (event) ->
@@ -178,4 +153,4 @@ BacklogFiltersDirective = ($log, $location) ->
 
     return {link:link}
 
-module.directive("tgBacklogFilters", ["$log", "$tgLocation", BacklogFiltersDirective])
+module.directive("tgBacklogFilters", ["$log", "$tgLocation", "$tgTemplate", BacklogFiltersDirective])

@@ -22,6 +22,7 @@
 taiga = @.taiga
 
 mixOf = @.taiga.mixOf
+debounce = @.taiga.debounce
 
 module = angular.module("taigaUserSettings")
 
@@ -41,42 +42,14 @@ class UserChangePasswordController extends mixOf(taiga.Controller, taiga.PageMix
         "$q",
         "$tgLocation",
         "$tgNavUrls",
-        "$tgAuth"
+        "$tgAuth",
+        "$translate"
     ]
 
-    constructor: (@scope, @rootscope, @repo, @confirm, @rs, @params, @q, @location, @navUrls, @auth) ->
-        @scope.sectionName = "Change Password" #i18n
-        @scope.project = {}
+    constructor: (@scope, @rootscope, @repo, @confirm, @rs, @params, @q, @location, @navUrls,
+                  @auth, @translate) ->
+        @scope.sectionName = @translate.instant("CHANGE_PASSWORD.SECTION_NAME")
         @scope.user = @auth.getUser()
-
-        promise = @.loadInitialData()
-
-        promise.then null, @.onInitialDataError.bind(@)
-
-    loadProject: ->
-        return @rs.projects.get(@scope.projectId).then (project) =>
-            @scope.project = project
-            @scope.$emit('project:loaded', project)
-            return project
-
-    loadInitialData: ->
-        promise = @repo.resolve({pslug: @params.pslug}).then (data) =>
-            @scope.projectId = data.project
-            return data
-
-        return promise.then(=> @.loadProject())
-
-    save: ->
-        if @scope.newPassword1 != @scope.newPassword2
-            @confirm.notify('error', "The passwords dosn't match")
-            return
-
-        promise = @rs.userSettings.changePassword(@scope.currentPassword, @scope.newPassword1)
-        promise.then =>
-            @confirm.notify('success')
-        promise.then null, (response) =>
-            @confirm.notify('error', response.data._error_message)
-
 
 module.controller("UserChangePasswordController", UserChangePasswordController)
 
@@ -85,11 +58,35 @@ module.controller("UserChangePasswordController", UserChangePasswordController)
 ## User ChangePassword Directive
 #############################################################################
 
-UserChangePasswordDirective = () ->
-    link = ($scope, $el, $attrs) ->
+UserChangePasswordDirective = ($rs, $confirm, $loading, $translate) ->
+    link = ($scope, $el, $attrs, ctrl) ->
+        submit = debounce 2000, (event) =>
+            event.preventDefault()
+
+            if $scope.newPassword1 != $scope.newPassword2
+                $confirm.notify('error', $translate.instant("CHANGE_PASSWORD.ERROR_PASSWORD_MATCH"))
+                return
+
+            $loading.start(submitButton)
+
+            promise = $rs.userSettings.changePassword($scope.currentPassword, $scope.newPassword1)
+            promise.then =>
+                $loading.finish(submitButton)
+                $confirm.notify('success')
+
+            promise.then null, (response) =>
+                $loading.finish(submitButton)
+                $confirm.notify('error', response.data._error_message)
+
+        submitButton = $el.find(".submit-button")
+
+        $el.on "submit", "form", submit
+
         $scope.$on "$destroy", ->
             $el.off()
 
-    return {link:link}
+    return {
+        link:link
+    }
 
-module.directive("tgUserChangePassword", UserChangePasswordDirective)
+module.directive("tgUserChangePassword", ["$tgResources", "$tgConfirm", "$tgLoading", UserChangePasswordDirective])

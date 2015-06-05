@@ -26,7 +26,7 @@ debounce = @.taiga.debounce
 
 module = angular.module("taigaProject")
 
-CreateProject = ($rootscope, $repo, $confirm, $location, $navurls, $rs, $projectUrl, lightboxService, $cacheFactory) ->
+CreateProject = ($rootscope, $repo, $confirm, $location, $navurls, $rs, $projectUrl, $loading, lightboxService, $cacheFactory, $translate, currentUserService) ->
     link = ($scope, $el, attrs) ->
         $scope.data = {}
         $scope.templates = []
@@ -39,12 +39,17 @@ CreateProject = ($rootscope, $repo, $confirm, $location, $navurls, $rs, $project
             # than another deleted in the same session
             $cacheFactory.get('$http').removeAll()
 
+            $loading.finish(submitButton)
             $rootscope.$broadcast("projects:reload")
-            $confirm.notify("success", "Success") #TODO: i18n
+
+            $confirm.notify("success", $translate.instant("COMMON.SAVE"))
+
             $location.url($projectUrl.get(response))
             lightboxService.close($el)
+            currentUserService._loadProjects()
 
         onErrorSubmit = (response) ->
+            $loading.finish(submitButton)
             form.setErrors(response)
             selectors = []
             for error_field in _.keys(response)
@@ -54,14 +59,18 @@ CreateProject = ($rootscope, $repo, $confirm, $location, $navurls, $rs, $project
             error_step.addClass("active")
             $el.find('.progress-bar').removeClass().addClass('progress-bar').addClass(error_step.data("step"))
 
-        submit = ->
+        submit = (event) =>
+            event.preventDefault()
+
             if not form.validate()
                 return
+
+            $loading.start(submitButton)
 
             promise = $repo.create("projects", $scope.data)
             promise.then(onSuccessSubmit, onErrorSubmit)
 
-        $scope.$on "projects:create", ->
+        openLightbox = ->
             $scope.data = {
                 total_story_points: 100
                 total_milestones: 5
@@ -109,26 +118,38 @@ CreateProject = ($rootscope, $repo, $confirm, $location, $navurls, $rs, $project
             step = prev.data('step')
             $el.find('.progress-bar').removeClass().addClass('progress-bar').addClass(step)
 
+        submitButton = $el.find(".submit-button")
 
-        $el.on "click", ".button-submit", debounce 2000, (event) ->
-            event.preventDefault()
-            submit()
+        $el.on "submit", "form", submit
 
         $el.on "click", ".close", (event) ->
             event.preventDefault()
             lightboxService.close($el)
 
-    return {link:link}
+        $scope.$on "$destroy", ->
+            $el.off()
 
-module.directive("tgLbCreateProject", ["$rootScope", "$tgRepo", "$tgConfirm", "$location", "$tgNavUrls",
-                                       "$tgResources", "$projectUrl", "lightboxService", "$cacheFactory", CreateProject])
+        openLightbox()
+
+    directive = {
+        link: link,
+        templateUrl: "project/wizard-create-project.html"
+        scope: {}
+    }
+
+    return directive
+
+
+module.directive("tgLbCreateProject", ["$rootScope", "$tgRepo", "$tgConfirm",
+    "$location", "$tgNavUrls", "$tgResources", "$projectUrl", "$tgLoading",
+    "lightboxService", "$cacheFactory", "$translate", "tgCurrentUserService", CreateProject])
 
 
 #############################################################################
 ## Delete Project Lightbox Directive
 #############################################################################
 
-DeleteProjectDirective = ($repo, $rootscope, $auth, $location, $navUrls, $confirm, lightboxService) ->
+DeleteProjectDirective = ($repo, $rootscope, $auth, $location, $navUrls, $confirm, lightboxService, tgLoader, currentUserService) ->
     link = ($scope, $el, $attrs) ->
         projectToDelete = null
         $scope.$on "deletelightbox:new", (ctx, project)->
@@ -139,13 +160,17 @@ DeleteProjectDirective = ($repo, $rootscope, $auth, $location, $navUrls, $confir
             $el.off()
 
         submit = ->
+            tgLoader.start()
+            lightboxService.close($el)
+
             promise = $repo.remove(projectToDelete)
 
             promise.then (data) ->
-                lightboxService.close($el)
+                tgLoader.pageLoaded()
                 $rootscope.$broadcast("projects:reload")
                 $location.path($navUrls.resolve("home"))
                 $confirm.notify("success")
+                currentUserService._loadProjects()
 
             # FIXME: error handling?
             promise.then null, ->
@@ -163,4 +188,4 @@ DeleteProjectDirective = ($repo, $rootscope, $auth, $location, $navUrls, $confir
     return {link:link}
 
 module.directive("tgLbDeleteProject", ["$tgRepo", "$rootScope", "$tgAuth", "$tgLocation", "$tgNavUrls",
-                                       "$tgConfirm", "lightboxService", DeleteProjectDirective])
+                                       "$tgConfirm", "lightboxService", "tgLoader", "tgCurrentUserService", DeleteProjectDirective])

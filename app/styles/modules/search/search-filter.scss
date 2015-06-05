@@ -11,18 +11,21 @@
         @extend %large;
         @extend %title;
         opacity: .2;
-        &.active,
         &:hover {
-            @include transition (opacity .3s linear);
-            color: $blackish;
+            color: $gray;
             opacity: 1;
+            transition: opacity .3s linear;
         }
+    }
+    .active {
+        color: $gray;
+        opacity: 1;
+        transition: opacity .3s linear;
     }
     .icon {
         margin-right: .4rem;
     }
-
-    span.name {
+    .name {
         padding-left: 5px;
     }
 }

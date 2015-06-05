@@ -27,6 +27,7 @@ scopeDefer = @.taiga.scopeDefer
 bindOnce = @.taiga.bindOnce
 groupBy = @.taiga.groupBy
 timeout = @.taiga.timeout
+bindMethods = @.taiga.bindMethods
 
 module = angular.module("taigaKanban")
 
@@ -61,21 +62,23 @@ class KanbanController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
         "$tgNavUrls",
         "$tgEvents",
         "$tgAnalytics",
-        "tgLoader"
+        "$translate"
     ]
 
     constructor: (@scope, @rootscope, @repo, @confirm, @rs, @params, @q, @location,
-                  @appTitle, @navUrls, @events, @analytics, tgLoader) ->
-        _.bindAll(@)
-        @scope.sectionName = "Kanban"
+                  @appTitle, @navUrls, @events, @analytics, @translate) ->
+
+        bindMethods(@)
+
+        @scope.sectionName = @translate.instant("KANBAN.SECTION_NAME")
         @scope.statusViewModes = {}
         @.initializeEventHandlers()
+
         promise = @.loadInitialData()
 
         # On Success
         promise.then =>
             @appTitle.set("Kanban - " + @scope.project.name)
-            tgLoader.pageLoaded()
 
         # On Error
         promise.then null, @.onInitialDataError.bind(@)
@@ -83,15 +86,21 @@ class KanbanController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
     initializeEventHandlers: ->
         @scope.$on "usform:new:success", =>
             @.loadUserstories()
+            @.refreshTagsColors()
             @analytics.trackEvent("userstory", "create", "create userstory on kanban", 1)
 
         @scope.$on "usform:bulk:success", =>
             @.loadUserstories()
             @analytics.trackEvent("userstory", "create", "bulk create userstory on kanban", 1)
 
-        @scope.$on("usform:edit:success", @.loadUserstories)
+        @scope.$on "usform:edit:success", =>
+            @.loadUserstories()
+            @.refreshTagsColors()
+
         @scope.$on("assigned-to:added", @.onAssignedToChanged)
         @scope.$on("kanban:us:move", @.moveUs)
+        @scope.$on("kanban:show-userstories-for-status", @.loadUserStoriesForStatus)
+        @scope.$on("kanban:hide-userstories-for-status", @.hideUserStoriesForStatus)
 
     # Template actions
 
@@ -113,50 +122,70 @@ class KanbanController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
             console.log "FAIL" # TODO
 
     # Load data methods
-
-    loadProjectStats: ->
-        return @rs.projects.stats(@scope.projectId).then (stats) =>
-            @scope.stats = stats
-
-            if stats.total_points
-                completedPercentage = Math.round(100 * stats.closed_points / stats.total_points)
-            else
-                completedPercentage = 0
-
-            @scope.stats.completedPercentage = "#{completedPercentage}%"
-            return stats
-
     refreshTagsColors: ->
         return @rs.projects.tagsColors(@scope.projectId).then (tags_colors) =>
             @scope.project.tags_colors = tags_colors
 
     loadUserstories: ->
-        return @rs.userstories.listAll(@scope.projectId).then (userstories) =>
-            @scope.userstories = userstories
-            @scope.usByStatus = _.groupBy(userstories, "status")
+        params = {
+            status__is_archived: false
+        }
 
+        return @rs.userstories.listAll(@scope.projectId, params).then (userstories) =>
+            @scope.userstories = userstories
+
+            usByStatus = _.groupBy(userstories, "status")
+            us_archived = []
             for status in @scope.usStatusList
-                if not @scope.usByStatus[status.id]?
-                    @scope.usByStatus[status.id] = []
-                @scope.usByStatus[status.id] = _.sortBy(@scope.usByStatus[status.id], "kanban_order")
+                if not usByStatus[status.id]?
+                    usByStatus[status.id] = []
+                if @scope.usByStatus?
+                    for us in @scope.usByStatus[status.id]
+                        if us.status != status.id
+                            us_archived.push(us)
+
+                # Must preserve the archived columns if loaded
+                if status.is_archived and @scope.usByStatus? and @scope.usByStatus[status.id].length != 0
+                    for us in @scope.usByStatus[status.id].concat(us_archived)
+                        if us.status == status.id
+                            usByStatus[status.id].push(us)
+
+                usByStatus[status.id] = _.sortBy(usByStatus[status.id], "kanban_order")
+
+            @scope.usByStatus = usByStatus
 
             # The broadcast must be executed when the DOM has been fully reloaded.
             # We can't assure when this exactly happens so we need a defer
             scopeDefer @scope, =>
-                @scope.$broadcast("userstories:loaded")
+                @scope.$broadcast("userstories:loaded", userstories)
 
             return userstories
+
+    loadUserStoriesForStatus: (ctx, statusId) ->
+        params = { status: statusId }
+        return @rs.userstories.listAll(@scope.projectId, params).then (userstories) =>
+            @scope.usByStatus[statusId] = _.sortBy(userstories, "kanban_order")
+            @scope.$broadcast("kanban:shown-userstories-for-status", statusId, userstories)
+            return userstories
+
+    hideUserStoriesForStatus: (ctx, statusId) ->
+        @scope.usByStatus[statusId] = []
+        @scope.$broadcast("kanban:hidden-userstories-for-status", statusId)
 
     loadKanban: ->
         return @q.all([
             @.refreshTagsColors(),
-            @.loadProjectStats(),
             @.loadUserstories()
         ])
 
     loadProject: ->
-        return @rs.projects.get(@scope.projectId).then (project) =>
+        return @rs.projects.getBySlug(@params.pslug).then (project) =>
+            if not project.is_kanban_activated
+                @location.path(@navUrls.resolve("permission-denied"))
+
+            @scope.projectId = project.id
             @scope.project = project
+            @scope.projectId = project.id
             @scope.points = _.sortBy(project.points, "order")
             @scope.pointsById = groupBy(project.points, (x) -> x.id)
             @scope.usStatusById = groupBy(project.us_statuses, (x) -> x.id)
@@ -173,16 +202,12 @@ class KanbanController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
             @.loadUserstories()
 
     loadInitialData: ->
-        # Resolve project slug
-        promise = @repo.resolve({pslug: @params.pslug}).then (data) =>
-            @scope.projectId = data.project
+        promise = @.loadProject()
+        return promise.then (project) =>
+            @.fillUsersAndRoles(project.users, project.roles)
             @.initializeSubscription()
-            return data
+            @.loadKanban().then( => @scope.$broadcast("redraw:wip"))
 
-        return promise.then(=> @.loadProject())
-                      .then(=> @.loadUsersAndRoles())
-                      .then(=> @.loadKanban())
-                      .then(=> @scope.$broadcast("redraw:wip"))
 
     ## View Mode methods
 
@@ -221,22 +246,22 @@ class KanbanController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
 
         return items
 
-    moveUs: (ctx, us, statusId, index) ->
-        if us.status != statusId
+    moveUs: (ctx, us, oldStatusId, newStatusId, index) ->
+        if oldStatusId != newStatusId
             # Remove us from old status column
-            r = @scope.usByStatus[us.status].indexOf(us)
-            @scope.usByStatus[us.status].splice(r, 1)
+            r = @scope.usByStatus[oldStatusId].indexOf(us)
+            @scope.usByStatus[oldStatusId].splice(r, 1)
 
             # Add us to new status column.
-            @scope.usByStatus[statusId].splice(index, 0, us)
-            us.status = statusId
+            @scope.usByStatus[newStatusId].splice(index, 0, us)
+            us.status = newStatusId
         else
-            r = @scope.usByStatus[statusId].indexOf(us)
-            @scope.usByStatus[statusId].splice(r, 1)
-            @scope.usByStatus[statusId].splice(index, 0, us)
+            r = @scope.usByStatus[newStatusId].indexOf(us)
+            @scope.usByStatus[newStatusId].splice(r, 1)
+            @scope.usByStatus[newStatusId].splice(index, 0, us)
 
-        itemsToSave = @.resortUserStories(@scope.usByStatus[statusId])
-        @scope.usByStatus[statusId] = _.sortBy(@scope.usByStatus[statusId], "kanban_order")
+        itemsToSave = @.resortUserStories(@scope.usByStatus[newStatusId])
+        @scope.usByStatus[newStatusId] = _.sortBy(@scope.usByStatus[newStatusId], "kanban_order")
 
         # Persist the userstory
         promise = @repo.save(us)
@@ -275,56 +300,103 @@ KanbanDirective = ($repo, $rootscope) ->
 
 module.directive("tgKanban", ["$tgRepo", "$rootScope", KanbanDirective])
 
-
 #############################################################################
-## Kanban Row Size Fixer Directive
-#############################################################################
-
-KanbanRowWidthFixerDirective = ->
-    link = ($scope, $el, $attrs) ->
-        bindOnce $scope, "usStatusList", (statuses) ->
-            itemSize = 310
-            size = (statuses.length * itemSize) - 10
-            $el.css("width", "#{size}px")
-
-        $scope.$on "$destroy", ->
-            $el.off()
-
-    return {link: link}
-
-module.directive("tgKanbanRowWidthFixer", KanbanRowWidthFixerDirective)
-
-
-#############################################################################
-## Kanban Column Height Fixer Directive
+## Kanban Archived Status Column Header Control
 #############################################################################
 
-KanbanColumnHeightFixerDirective = ->
-    mainPadding = 32 # px
-    scrollPadding = 0 # px
-
-    renderSize = ($el) ->
-        elementOffset = $el.parent().parent().offset().top
-        windowHeight = angular.element(window).height()
-        columnHeight = windowHeight - elementOffset - mainPadding - scrollPadding
-        $el.css("height", "#{columnHeight}px")
+KanbanArchivedStatusHeaderDirective = ($rootscope, $translate) ->
+    showArchivedText = $translate.instant("KANBAN.ACTION_SHOW_ARCHIVED")
+    hideArchivedText = $translate.instant("KANBAN.ACTION_HIDE_ARCHIVED")
 
     link = ($scope, $el, $attrs) ->
-        timeout(500, -> renderSize($el))
+        status = $scope.$eval($attrs.tgKanbanArchivedStatusHeader)
+        hidden = true
 
-        $scope.$on "resize", ->
-            renderSize($el)
+        $scope.class = "icon icon-open-eye"
+        $scope.title = showArchivedText
+
+        $el.on "click", (event) ->
+            hidden = not hidden
+
+            $scope.$apply ->
+                if hidden
+                    $scope.class = "icon icon-open-eye"
+                    $scope.title = showArchivedText
+                    $rootscope.$broadcast("kanban:hide-userstories-for-status", status.id)
+
+                else
+                    $scope.class = "icon icon-closed-eye"
+                    $scope.title = hideArchivedText
+                    $rootscope.$broadcast("kanban:show-userstories-for-status", status.id)
 
         $scope.$on "$destroy", ->
             $el.off()
 
     return {link:link}
 
+module.directive("tgKanbanArchivedStatusHeader", [ "$rootScope", "$translate", KanbanArchivedStatusHeaderDirective])
 
-module.directive("tgKanbanColumnHeightFixer", KanbanColumnHeightFixerDirective)
 
 #############################################################################
-## Kaban User Story Directive
+## Kanban Archived Status Column Intro Directive
+#############################################################################
+
+KanbanArchivedStatusIntroDirective = ($translate) ->
+    userStories = []
+
+    link = ($scope, $el, $attrs) ->
+        hiddenUserStoriexText = $translate.instant("KANBAN.HIDDEN_USER_STORIES")
+        status = $scope.$eval($attrs.tgKanbanArchivedStatusIntro)
+        $el.text(hiddenUserStoriexText)
+
+        updateIntroText = ->
+            if userStories.length > 0
+                $el.text("")
+            else
+                $el.text(hiddenUserStoriexText)
+
+        $scope.$on "kanban:us:move", (ctx, itemUs, oldStatusId, newStatusId, itemIndex) ->
+            # The destination columnd is this one
+            if status.id == newStatusId
+                # Reorder
+                if status.id == oldStatusId
+                    r = userStories.indexOf(itemUs)
+                    userStories.splice(r, 1)
+                    userStories.splice(itemIndex, 0, itemUs)
+
+                # Archiving user story
+                else
+                    itemUs.isArchived = true
+                    userStories.splice(itemIndex, 0, itemUs)
+
+            # Unarchiving user story
+            else if status.id == oldStatusId
+                itemUs.isArchived = false
+                r = userStories.indexOf(itemUs)
+                userStories.splice(r, 1)
+
+            updateIntroText()
+
+        $scope.$on "kanban:shown-userstories-for-status", (ctx, statusId, userStoriesLoaded) ->
+            if statusId == status.id
+                userStories = _.filter(userStoriesLoaded, (us) -> us.status == status.id)
+                updateIntroText()
+
+        $scope.$on "kanban:hidden-userstories-for-status", (ctx, statusId) ->
+            if statusId == status.id
+                userStories = []
+                updateIntroText()
+
+        $scope.$on "$destroy", ->
+            $el.off()
+
+    return {link:link}
+
+module.directive("tgKanbanArchivedStatusIntro", ["$translate", KanbanArchivedStatusIntroDirective])
+
+
+#############################################################################
+## Kanban User Story Directive
 #############################################################################
 
 KanbanUserstoryDirective = ($rootscope) ->
@@ -348,33 +420,66 @@ KanbanUserstoryDirective = ($rootscope) ->
             $el.off()
 
     return {
-        templateUrl: "/partials/views/components/kanban-task.html"
+        templateUrl: "kanban/kanban-task.html"
         link: link
         require: "ngModel"
     }
 
 module.directive("tgKanbanUserstory", ["$rootScope", KanbanUserstoryDirective])
 
+#############################################################################
+## Kanban Squish Column Directive
+#############################################################################
+
+KanbanSquishColumnDirective = (rs) ->
+
+    link = ($scope, $el, $attrs) ->
+        $scope.$on "project:loaded", (event, project) ->
+            $scope.folds = rs.kanban.getStatusColumnModes(project.id)
+            updateTableWidth()
+
+        $scope.foldStatus = (status) ->
+            $scope.folds[status.id] = !!!$scope.folds[status.id]
+            rs.kanban.storeStatusColumnModes($scope.projectId, $scope.folds)
+            updateTableWidth()
+            return
+
+        updateTableWidth = ->
+            columnWidths = _.map $scope.usStatusList, (status) ->
+                if $scope.folds[status.id]
+                    return 40
+                else
+                    return 310
+            totalWidth = _.reduce columnWidths, (total, width) ->
+                return total + width
+            $el.find('.kanban-table-inner').css("width", totalWidth)
+
+    return {link: link}
+
+module.directive("tgKanbanSquishColumn", ["$tgResources", KanbanSquishColumnDirective])
 
 #############################################################################
-## Kaban WIP Limit Directive
+## Kanban WIP Limit Directive
 #############################################################################
 
 KanbanWipLimitDirective = ->
     link = ($scope, $el, $attrs) ->
         $el.disableSelection()
 
-        redrawWipLimit = ->
+        status = $scope.$eval($attrs.tgKanbanWipLimit)
+
+        redrawWipLimit = =>
             $el.find(".kanban-wip-limit").remove()
-            timeout 200, ->
-                element = $el.find(".kanban-task")[$scope.status.wip_limit]
+            timeout 200, =>
+                element = $el.find(".kanban-task")[status.wip_limit]
                 if element
                     angular.element(element).before("<div class='kanban-wip-limit'></div>")
 
-        $scope.$on "redraw:wip", redrawWipLimit
-        $scope.$on "kanban:us:move", redrawWipLimit
-        $scope.$on "usform:new:success", redrawWipLimit
-        $scope.$on "usform:bulk:success", redrawWipLimit
+        if status and not status.is_archived
+            $scope.$on "redraw:wip", redrawWipLimit
+            $scope.$on "kanban:us:move", redrawWipLimit
+            $scope.$on "usform:new:success", redrawWipLimit
+            $scope.$on "usform:bulk:success", redrawWipLimit
 
         $scope.$on "$destroy", ->
             $el.off()
@@ -388,18 +493,21 @@ module.directive("tgKanbanWipLimit", KanbanWipLimitDirective)
 ## Kanban User Directive
 #############################################################################
 
-KanbanUserDirective = ($log) ->
+KanbanUserDirective = ($log, $compile) ->
     template = _.template("""
     <figure class="avatar">
-        <a href="#" title="Assign User Story" <% if (!clickable) {%>class="not-clickable"<% } %>>
-            <img src="<%= imgurl %>" alt="<%- name %>" class="avatar">
+        <a href="#" title="{{'US.ASSIGN' | translate}}" <% if (!clickable) {%>class="not-clickable"<% } %>>
+            <img src="<%- imgurl %>" alt="<%- name %>" class="avatar">
         </a>
     </figure>
-    """) # TODO: i18n
+    """)
 
     clickable = false
 
     link = ($scope, $el, $attrs, $model) ->
+        username_label = $el.parent().find("a.task-assigned")
+        username_label.addClass("not-clickable")
+
         if not $attrs.tgKanbanUserAvatar
             return $log.error "KanbanUserDirective: no attr is defined"
 
@@ -417,17 +525,9 @@ KanbanUserDirective = ($log) ->
             else
                 ctx = {name: user.full_name_display, imgurl: user.photo, clickable: clickable}
 
-            html = template(ctx)
+            html = $compile(template(ctx))($scope)
             $el.html(html)
-            username_label = $el.parent().find("a.task-assigned")
-            username_label.html(ctx.name)
-            username_label.on "click", (event) ->
-                if $el.find("a").hasClass("noclick")
-                    return
-
-                us = $model.$modelValue
-                $ctrl = $el.controller()
-                $ctrl.changeUsAssignedTo(us)
+            username_label.text(ctx.name)
 
         bindOnce $scope, "project", (project) ->
             if project.my_permissions.indexOf("modify_us") > -1
@@ -440,9 +540,18 @@ KanbanUserDirective = ($log) ->
                     $ctrl = $el.controller()
                     $ctrl.changeUsAssignedTo(us)
 
+                username_label.removeClass("not-clickable")
+                username_label.on "click", (event) ->
+                    if $el.find("a").hasClass("noclick")
+                        return
+
+                    us = $model.$modelValue
+                    $ctrl = $el.controller()
+                    $ctrl.changeUsAssignedTo(us)
+
         $scope.$on "$destroy", ->
             $el.off()
 
     return {link: link, require:"ngModel"}
 
-module.directive("tgKanbanUserAvatar", ["$log", KanbanUserDirective])
+module.directive("tgKanbanUserAvatar", ["$log", "$compile", KanbanUserDirective])

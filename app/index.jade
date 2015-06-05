@@ -1,40 +1,36 @@
 doctype html
-html(lang="en", ng-app="taiga")
+html(lang="en")
     head
         meta(charset="utf-8")
         title Taiga
         meta(http-equiv="content-type", content="text/html; charset=utf-8")
         meta(name="description", content="Taiga Landing page")
         meta(name="keywords", content="Agile, Taiga, Management, Github")
-        meta(name="viewport", content="width=device-width, user-scalable=no")
+        //-meta(name="viewport", content="width=device-width, user-scalable=no")
         link(rel="stylesheet", href="/styles/main.css")
         link(rel="icon", type="image/png", href="/images/favicon.png")
 
 
     body(tg-main)
-        include partials/views/modules/projects-nav
+        include partials/includes/components/notification-message
 
-        //- the content of nav.menu is in coffe.modules.base TaigaMain directive
-        nav.menu.hidden(tg-project-menu)
-
-        include partials/views/components/notification-message
+        div(tg-navigation-bar)
 
         div.master(ng-view)
 
-        div.hidden.lightbox.lightbox-generic-ask
-            include partials/views/modules/lightbox-generic-ask
-        div.hidden.lightbox.lightbox-ask-choice
-            include partials/views/modules/lightbox-ask-choice
-        div.hidden.lightbox.lightbox-generic-success
-            include partials/views/modules/lightbox-generic-success
-        div.hidden.lightbox.lightbox-generic-error
-            include partials/views/modules/lightbox-generic-error
-        div.lightbox.lightbox-search(tg-search-box)
-            include partials/views/modules/lightbox-search
-        div.lightbox.lightbox-feedback.lightbox-generic-form(tg-lb-feedback)
-            include partials/views/modules/lightbox-feedback
+        div.lightbox.lightbox-generic-ask
+            include partials/includes/modules/lightbox-generic-ask
+        div.lightbox.lightbox-ask-choice
+            include partials/includes/modules/lightbox-ask-choice
+        div.lightbox.lightbox-generic-success
+            include partials/includes/modules/lightbox-generic-success
+        div.lightbox.lightbox-generic-error
+            include partials/includes/modules/lightbox-generic-error
+        div.lightbox.lightbox-generic-loading
+            include partials/includes/modules/lightbox-generic-loading
 
-        include partials/views/modules/loader
+        include partials/includes/modules/loader
 
         script(src="/js/libs.js?v=#{v}")
-        script(src="/js/app.js?v=#{v}")
+        script(src="/js/templates.js?v=#{v}")
+        script(src="/js/app-loader.js?v=#{v}")

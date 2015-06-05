@@ -2,29 +2,10 @@
     align-items: center;
     background-color: $whitish;
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     margin-bottom: 2rem;
     padding: .5rem 1rem;
-    ul {
-        display: flex;
-        margin-bottom: 0;
-    }
-    li {
-        margin-right: 2rem;
-        a {
-            @extend %large;
-            @extend %title;
-            opacity: .4;
-            &.active,
-            &:hover {
-                @include transition (opacity .3s linear);
-                color: $blackish;
-                opacity: 1;
-
-            }
-        }
-        .icon {
-            padding-right: .5rem;
-        }
+    .button-bulk {
+        margin-left: .2rem;
     }
 }

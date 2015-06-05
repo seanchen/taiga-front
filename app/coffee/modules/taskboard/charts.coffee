@@ -34,7 +34,7 @@ module = angular.module("taigaTaskboard")
 ## Sprint burndown graph directive
 #############################################################################
 
-SprintGraphDirective = ->
+SprintGraphDirective = ($translate)->
     redrawChart = (element, dataToDraw) ->
         width = element.width()
         element.height(240)
@@ -57,19 +57,25 @@ SprintGraphDirective = ->
             grid:
                 borderWidth: { top: 0, right: 1, left:0, bottom: 0 }
                 borderColor: '#ccc'
+                hoverable: true
             xaxis:
                 tickSize: [1, "day"]
                 min: days[0]
                 max: _.last(days)
                 mode: "time"
                 daysNames: days
-                axisLabel: 'Day'
+                axisLabel: $translate.instant("TASKBOARD.CHARTS.XAXIS_LABEL")
                 axisLabelUseCanvas: true
                 axisLabelFontSizePixels: 12
                 axisLabelFontFamily: 'Verdana, Arial, Helvetica, Tahoma, sans-serif'
                 axisLabelPadding: 5
             yaxis:
                 min: 0
+                axisLabel: $translate.instant("TASKBOARD.CHARTS.YAXIS_LABEL")
+                axisLabelUseCanvas: true
+                axisLabelFontSizePixels: 12
+                axisLabelFontFamily: 'Verdana, Arial, Helvetica, Tahoma, sans-serif'
+                axisLabelPadding: 5
             series:
                 shadowSize: 0
                 lines:
@@ -81,6 +87,23 @@ SprintGraphDirective = ->
                     radius: 4
                     lineWidth: 2
             colors: ["rgba(102,153,51,1)", "rgba(120,120,120,0.2)"]
+            tooltip: true
+            tooltipOpts:
+                content: (label, xval, yval, flotItem) ->
+                    formattedDate = moment(xval).format($translate.instant("TASKBOARD.CHARTS.DATE"))
+                    roundedValue = Math.round(yval)
+
+                    if flotItem.seriesIndex == 1
+                        return $translate.instant("TASKBOARD.CHARTS.OPTIMAL", {
+                            formattedDate: formattedDate,
+                            roundedValue: roundedValue
+                        })
+
+                    else
+                        return $translate.instant("TASKBOARD.CHARTS.REAL", {
+                            formattedDate: formattedDate,
+                            roundedValue: roundedValue
+                        })
 
         element.empty()
         element.plot(data, options).data("plot")
@@ -89,13 +112,15 @@ SprintGraphDirective = ->
         element = angular.element($el)
 
         $scope.$on "resize", ->
-            redrawChart(element, $scope.stats.days)
+            redrawChart(element, $scope.stats.days) if $scope.stats
 
         $scope.$on "taskboard:graph:toggle-visibility", ->
             $el.parent().toggleClass('open')
 
             # fix chart overflow
-            timeout(100, -> redrawChart(element, $scope.stats.days))
+            timeout(100, ->
+                redrawChart(element, $scope.stats.days) if $scope.stats
+            )
 
         $scope.$watch 'stats', (value) ->
             if not $scope.stats?
@@ -107,5 +132,4 @@ SprintGraphDirective = ->
 
     return {link: link}
 
-
-module.directive("tgSprintGraph", SprintGraphDirective)
+module.directive("tgSprintGraph", ["$translate", SprintGraphDirective])

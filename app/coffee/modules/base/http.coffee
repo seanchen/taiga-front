@@ -22,16 +22,26 @@
 taiga = @.taiga
 
 class HttpService extends taiga.Service
-    @.$inject = ["$http", "$q", "$tgStorage"]
+    @.$inject = ["$http", "$q", "$tgStorage", "$rootScope", "$cacheFactory"]
 
+    constructor: (@http, @q, @storage, @rootScope, @cacheFactory) ->
+        super()
+
+        @.cache = @cacheFactory("httpget");
     headers: ->
+        headers = {}
+
+        # Authorization
         token = @storage.get('token')
         if token
-            return {"Authorization":"Bearer #{token}"}
-        return {}
+            headers["Authorization"] = "Bearer #{token}"
 
-    constructor: (@http, @q, @storage) ->
-        super()
+        # Accept-Language
+        lang = @rootScope.user?.lang
+        if lang
+            headers["Accept-Language"] = lang
+
+        return headers
 
     request: (options) ->
         options.headers = _.merge({}, options.headers or {}, @.headers())
@@ -43,7 +53,12 @@ class HttpService extends taiga.Service
     get: (url, params, options) ->
         options = _.merge({method: "GET", url: url}, options)
         options.params = params if params
-        return @.request(options)
+
+        # prevent duplicated http request
+        options.cache = @.cache
+
+        return @.request(options).finally (data) =>
+            @.cache.removeAll()
 
     post: (url, data, params, options) ->
         options = _.merge({method: "POST", url: url}, options)

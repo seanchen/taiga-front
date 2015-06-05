@@ -23,7 +23,7 @@ taiga = @.taiga
 groupBy = @.taiga.groupBy
 bindOnce = @.taiga.bindOnce
 
-module = angular.module("taigaBase", ["taigaLocales"])
+module = angular.module("taigaBase", [])
 
 #############################################################################
 ## Main Directive
@@ -44,6 +44,7 @@ module.directive("tgMain", ["$rootScope", "$window", TaigaMainDirective])
 
 urls = {
     "home": "/"
+    "projects": "/projects"
     "error": "/error"
     "not-found": "/not-found"
     "permission-denied": "/permission-denied"
@@ -57,7 +58,8 @@ urls = {
     "invitation": "/invitation/:token"
     "create-project": "/create-project"
 
-    "profile": "/:user"
+    "profile": "/profile"
+    "user-profile": "/profile/:username"
 
     "project": "/project/:project"
     "project-backlog": "/project/:project/backlog"
@@ -67,38 +69,43 @@ urls = {
     "project-search": "/project/:project/search"
 
     "project-userstories-detail": "/project/:project/us/:ref"
-    "project-userstories-detail-edit": "/project/:project/us/:ref/edit"
-
     "project-tasks-detail": "/project/:project/task/:ref"
-    "project-tasks-detail-edit": "/project/:project/task/:ref/edit"
-
     "project-issues-detail": "/project/:project/issue/:ref"
-    "project-issues-detail-edit": "/project/:project/issue/:ref/edit"
 
-    "project-wiki": "/project/:project/wiki",
-    "project-wiki-page": "/project/:project/wiki/:slug",
-    "project-wiki-page-edit": "/project/:project/wiki/:slug/edit",
+    "project-wiki": "/project/:project/wiki"
+    "project-wiki-page": "/project/:project/wiki/:slug"
+
+    # Team
+    "project-team": "/project/:project/team"
 
     # Admin
     "project-admin-home": "/project/:project/admin/project-profile/details"
     "project-admin-project-profile-details": "/project/:project/admin/project-profile/details"
     "project-admin-project-profile-default-values": "/project/:project/admin/project-profile/default-values"
     "project-admin-project-profile-modules": "/project/:project/admin/project-profile/modules"
-    "project-admin-project-values-us-status": "/project/:project/admin/project-values/us-status"
-    "project-admin-project-values-us-points": "/project/:project/admin/project-values/us-points"
-    "project-admin-project-values-task-status": "/project/:project/admin/project-values/task-status"
-    "project-admin-project-values-issue-status": "/project/:project/admin/project-values/issue-status"
-    "project-admin-project-values-issue-types": "/project/:project/admin/project-values/issue-types"
-    "project-admin-project-values-issue-priorities": "/project/:project/admin/project-values/issue-priorities"
-    "project-admin-project-values-issue-severities": "/project/:project/admin/project-values/issue-severities"
+    "project-admin-project-profile-export": "/project/:project/admin/project-profile/export"
+    "project-admin-project-profile-reports": "/project/:project/admin/project-profile/reports"
+
+    "project-admin-project-values-status": "/project/:project/admin/project-values/status"
+    "project-admin-project-values-points": "/project/:project/admin/project-values/points"
+    "project-admin-project-values-priorities": "/project/:project/admin/project-values/priorities"
+    "project-admin-project-values-severities": "/project/:project/admin/project-values/severities"
+    "project-admin-project-values-types": "/project/:project/admin/project-values/types"
+    "project-admin-project-values-custom-fields": "/project/:project/admin/project-values/custom-fields"
+
     "project-admin-memberships": "/project/:project/admin/memberships"
     "project-admin-roles": "/project/:project/admin/roles"
+    "project-admin-third-parties-webhooks": "/project/:project/admin/third-parties/webhooks"
+    "project-admin-third-parties-github": "/project/:project/admin/third-parties/github"
+    "project-admin-third-parties-gitlab": "/project/:project/admin/third-parties/gitlab"
+    "project-admin-third-parties-bitbucket": "/project/:project/admin/third-parties/bitbucket"
+    "project-admin-contrib": "/project/:project/admin/contrib/:plugin"
 
     # User settings
-    "user-settings-user-profile": "/project/:project/user-settings/user-profile"
-    "user-settings-user-change-password": "/project/:project/user-settings/user-change-password"
-    "user-settings-user-avatar": "/project/:project/user-settings/user-avatar"
-    "user-settings-mail-notifications": "/project/:project/user-settings/mail-notifications"
+    "user-settings-user-profile": "/user-settings/user-profile"
+    "user-settings-user-change-password": "/user-settings/user-change-password"
+    "user-settings-user-avatar": "/user-settings/user-avatar"
+    "user-settings-mail-notifications": "/user-settings/mail-notifications"
 
 }
 

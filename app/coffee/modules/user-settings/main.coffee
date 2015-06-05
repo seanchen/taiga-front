@@ -21,8 +21,9 @@
 
 taiga = @.taiga
 mixOf = @.taiga.mixOf
+sizeFormat = @.taiga.sizeFormat
 module = angular.module("taigaUserSettings")
-
+debounce = @.taiga.debounce
 
 #############################################################################
 ## User settings Controller
@@ -32,6 +33,7 @@ class UserSettingsController extends mixOf(taiga.Controller, taiga.PageMixin)
     @.$inject = [
         "$scope",
         "$rootScope",
+        "$tgConfig",
         "$tgRepo",
         "$tgConfirm",
         "$tgResources",
@@ -39,33 +41,43 @@ class UserSettingsController extends mixOf(taiga.Controller, taiga.PageMixin)
         "$q",
         "$tgLocation",
         "$tgNavUrls",
-        "$tgAuth"
+        "$tgAuth",
+        "$translate"
     ]
 
-    constructor: (@scope, @rootscope, @repo, @confirm, @rs, @params, @q, @location, @navUrls, @auth) ->
-        @scope.sectionName = "User Profile" #i18n
+    constructor: (@scope, @rootscope, @config, @repo, @confirm, @rs, @params, @q, @location, @navUrls,
+                  @auth, @translate) ->
+        @scope.sectionName = "USER_SETTINGS.MENU.SECTION_TITLE"
+
         @scope.project = {}
         @scope.user = @auth.getUser()
+
+        if !@scope.user
+            @location.path(@navUrls.resolve("permission-denied"))
+            @location.replace()
+
+        @scope.lang = @getLan()
+
+        maxFileSize = @config.get("maxUploadFileSize", null)
+        if maxFileSize
+            @translate("USER_SETTINGS.AVATAR_MAX_SIZE", {"maxFileSize": sizeFormat(maxFileSize)}).then (text) =>
+                @scope.maxFileSizeMsg = text
 
         promise = @.loadInitialData()
 
         promise.then null, @.onInitialDataError.bind(@)
 
-    loadProject: ->
-        return @rs.projects.get(@scope.projectId).then (project) =>
-            @scope.project = project
-            @scope.$emit('project:loaded', project)
-            return project
-
     loadInitialData: ->
-        promise = @repo.resolve({pslug: @params.pslug}).then (data) =>
-            @scope.projectId = data.project
-            return data
-
-        return promise.then(=> @.loadProject())
+        return @rs.locales.list().then (locales) =>
+            @scope.locales = locales
+            return locales
 
     openDeleteLightbox: ->
         @rootscope.$broadcast("deletelightbox:new", @scope.user)
+
+    getLan: ->
+        return @scope.user.lang ||
+               @translate.preferredLanguage()
 
 module.controller("UserSettingsController", UserSettingsController)
 
@@ -74,20 +86,23 @@ module.controller("UserSettingsController", UserSettingsController)
 ## User Profile Directive
 #############################################################################
 
-UserProfileDirective = ($confirm, $auth, $repo) ->
+UserProfileDirective = ($confirm, $auth, $repo, $translate) ->
     link = ($scope, $el, $attrs) ->
-        $el.on "click", ".user-profile form .save-profile", (event) ->
+        submit = debounce 2000, (event) =>
+            event.preventDefault()
+
             form = $el.find("form").checksley()
             return if not form.validate()
 
             changeEmail = $scope.user.isAttributeModified("email")
+            $scope.user.lang = $scope.lang
 
             onSuccess = (data) =>
-                $auth.setUser($scope.user)
+                $auth.setUser(data)
+
                 if changeEmail
-                    $confirm.success("<strong>Check your inbox!</strong><br />
-                           We have sent a mail to your account<br />
-                           with the instructions to set your new address") #TODO: i18n
+                    text = $translate.instant("USER_PROFILE.CHANGE_EMAIL_SUCCESS")
+                    $confirm.success(text)
                 else
                     $confirm.notify('success')
 
@@ -97,12 +112,14 @@ UserProfileDirective = ($confirm, $auth, $repo) ->
 
             $repo.save($scope.user).then(onSuccess, onError)
 
+        $el.on "submit", "form", submit
+
         $scope.$on "$destroy", ->
             $el.off()
 
     return {link:link}
 
-module.directive("tgUserProfile", ["$tgConfirm", "$tgAuth", "$tgRepo",  UserProfileDirective])
+module.directive("tgUserProfile", ["$tgConfirm", "$tgAuth", "$tgRepo", "$translate", UserProfileDirective])
 
 
 #############################################################################
@@ -111,29 +128,34 @@ module.directive("tgUserProfile", ["$tgConfirm", "$tgAuth", "$tgRepo",  UserProf
 
 UserAvatarDirective = ($auth, $model, $rs, $confirm) ->
     link = ($scope, $el, $attrs) ->
+        showSizeInfo = ->
+            $el.find(".size-info").removeClass("hidden")
+
         onSuccess = (response) ->
             user = $model.make_model("users", response.data)
             $auth.setUser(user)
             $scope.user = user
 
-            $el.find('.overlay').hide()
+            $el.find('.overlay').addClass('hidden')
             $confirm.notify('success')
 
         onError = (response) ->
-            $el.find('.overlay').hide()
+            showSizeInfo() if response.status == 413
+            $el.find('.overlay').addClass('hidden')
             $confirm.notify('error', response.data._error_message)
 
         # Change photo
-        $el.on "click", ".button.change", ->
+        $el.on "click", ".js-change-avatar", ->
             $el.find("#avatar-field").click()
 
         $el.on "change", "#avatar-field", (event) ->
-            $el.find('.overlay').show()
-            $rs.userSettings.changeAvatar($scope.avatarAttachment).then(onSuccess, onError)
+            if $scope.avatarAttachment
+                $el.find('.overlay').removeClass('hidden')
+                $rs.userSettings.changeAvatar($scope.avatarAttachment).then(onSuccess, onError)
 
         # Use gravatar photo
         $el.on "click", "a.use-gravatar", (event) ->
-            $el.find('.overlay').show()
+            $el.find('.overlay').removeClass('hidden')
             $rs.userSettings.removeAvatar().then(onSuccess, onError)
 
         $scope.$on "$destroy", ->

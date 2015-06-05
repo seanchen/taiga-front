@@ -29,40 +29,50 @@ trim = @.taiga.trim
 
 module = angular.module("taigaFeedback", [])
 
-FeedbackDirective = ($lightboxService, $repo, $confirm)->
+FeedbackDirective = ($lightboxService, $repo, $confirm, $loading, feedbackService)->
     link = ($scope, $el, $attrs) ->
         form = $el.find("form").checksley()
 
-        submit = debounce 2000, ->
+        submit = debounce 2000, (event) =>
+            event.preventDefault()
+
             if not form.validate()
                 return
+
+            $loading.start(submitButton)
 
             promise = $repo.create("feedback", $scope.feedback)
 
             promise.then (data) ->
+                $loading.finish(submitButton)
                 $lightboxService.close($el)
                 $confirm.notify("success", "\\o/ we'll be happy to read your")
 
             promise.then null, ->
+                $loading.finish(submitButton)
                 $confirm.notify("error")
 
-        $el.on "submit", (event) ->
-            submit()
+        submitButton = $el.find(".submit-button")
 
-        $el.on "click", ".button-green", (event) ->
-            event.preventDefault()
-            submit()
+        $el.on "submit", "form", submit
 
-        $scope.$on "feedback:show", ->
-            $scope.$apply ->
-                $scope.feedback = {}
-
+        openLightbox = ->
+            $scope.feedback = {}
             $lightboxService.open($el)
             $el.find("textarea").focus()
 
         $scope.$on "$destroy", ->
             $el.off()
 
-    return {link:link}
+        openLightbox()
 
-module.directive("tgLbFeedback", ["lightboxService", "$tgRepo", "$tgConfirm", FeedbackDirective])
+    directive = {
+        link: link,
+        templateUrl: "common/lightbox-feedback.html"
+        scope: {}
+    }
+
+    return directive
+
+module.directive("tgLbFeedback", ["lightboxService", "$tgRepo", "$tgConfirm",
+    "$tgLoading", "tgFeedbackService", FeedbackDirective])

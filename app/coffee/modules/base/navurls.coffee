@@ -44,10 +44,10 @@ class NavigationUrlsService extends taiga.Service
         return url.replace(/(:\w+)/g, replacer)
 
     resolve: (name, ctx) ->
-        if ctx
-            return @.formatUrl(@.urls[name], ctx)
-        return @.urls[name]
-
+        url = @.urls[name]
+        return "" if not url
+        return @.formatUrl(url, ctx) if ctx
+        return url
 
 module.service("$tgNavUrls", NavigationUrlsService)
 
@@ -100,26 +100,31 @@ NavigationUrlsDirective = ($navurls, $auth, $q, $location) ->
                     url = $navurls.resolve(name)
                     fullUrl = $navurls.formatUrl(url, options)
 
+                    if $attrs.tgNavGetParams
+                        getURLParams = JSON.parse($attrs.tgNavGetParams)
+                        getURLParamsStr = $.param(getURLParams)
+                        fullUrl = "#{fullUrl}?#{getURLParamsStr}"
+
                     target.data("fullUrl", fullUrl)
 
                     if target.is("a")
                         target.attr("href", fullUrl)
 
-        $el.on "click", (event) ->
-            event.preventDefault()
-            target = $(event.currentTarget)
+                    $el.on "click", (event) ->
+                        event.preventDefault()
+                        target = $(event.currentTarget)
 
-            if target.hasClass('noclick')
-                return
+                        if target.hasClass('noclick')
+                            return
 
-            fullUrl = target.data("fullUrl")
+                        fullUrl = target.data("fullUrl")
 
-            switch event.which
-                when 1
-                    $location.url(fullUrl)
-                    $scope.$apply()
-                when 2
-                    window.open fullUrl
+                        switch event.which
+                            when 1
+                                $location.url(fullUrl)
+                                $scope.$apply()
+                            when 2
+                                window.open fullUrl
 
         $scope.$on "$destroy", ->
             $el.off()

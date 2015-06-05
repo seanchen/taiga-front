@@ -28,6 +28,12 @@ locationFactory = ($location, $route, $rootscope) ->
             un()
 
         return $location
+
+    $location.isInCurrentRouteParams = (name, value) ->
+        params = _.merge($route.current.params, $location.search())
+
+        return params[name] == value
+
     return $location
 
 

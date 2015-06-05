@@ -1,53 +1,39 @@
 .summary {
-    @include clearfix;
+    align-content: center;
     background: $grayer;
     color: $white;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
     margin-bottom: 2rem;
     padding: 1em;
-    ul {
-        display: inline-block;
-        margin: 0;
-        padding: 0;
-    }
-    li {
-        display: inline-block;
-        margin-right: 1rem;
+    .summary-stats {
+        display: flex;
+        margin: 0 .5rem;
     }
     .data {
-        float: left;
-        margin-right: 1em;
-        margin-top: 4px;
         .number {
             color: $fresh-taiga;
-            top: 0;
         }
-
     }
     .icon {
         @extend %large;
-        float: left;
     }
     .number {
         @extend %xlarge;
         @extend %bold;
-        float: left;
+        line-height: .9;
         margin-right: .3rem;
-        position: relative;
-        top: 5px;
     }
 
     .description {
-        // line-height: 0;
         @extend %small;
         @extend %text;
-        float: left;
-        line-height: .9rem;
     }
 }
 
 .summary-progress-bar {
-    background: $whitish;
-    float: left;
+    background: $white;
     height: 30px;
     margin-bottom: 0;
     margin-right: 10px;
@@ -76,34 +62,48 @@
     }
 }
 
-
 .large-summary {
-    ul {
-        border-right: 1px solid $whitish;
+    justify-content: space-between;
+    .large-summary-wrapper {
+        align-content: center;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+    .summary-progress-wrapper {
+        display: flex;
+    }
+    .summary-progress-bar {
+        flex-basis: 200px;
+        min-width: 200px;
+    }
+    .summary-stats {
         margin-right: 1rem;
-        vertical-align: top;
-        &:last-of-type {
+        &:last-child {
             border: 0;
             margin: 0;
         }
+    }
+    .summary-stats-divider {
+        margin-right: 2rem;
     }
     .icon {
         @extend %xlarge;
         margin-right: .4rem;
         &.icon-stats {
-            @include transition(color .3s linear);
             color: $gray;
             float: right;
+            transition: color .3s linear;
             &:hover {
-                @include transition(color .3s linear);
                 color: $fresh-taiga;
+                transition: color .3s linear;
             }
             &.active {
                 color: $fresh-taiga;
-                &:hover {
-                    @include transition(color .3s linear);
-                    color: $gray;
-                }
+            }
+            &.active:hover {
+                color: $gray;
+                transition: color .3s linear;
             }
         }
     }

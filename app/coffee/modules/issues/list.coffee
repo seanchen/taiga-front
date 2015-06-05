@@ -50,12 +50,11 @@ class IssuesController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
         "$appTitle",
         "$tgNavUrls",
         "$tgEvents",
-        "$tgAnalytics",
-        "tgLoader"
+        "$tgAnalytics"
     ]
 
     constructor: (@scope, @rootscope, @repo, @confirm, @rs, @urls, @params, @q, @location, @appTitle,
-                  @navUrls, @events, @analytics, tgLoader) ->
+                  @navUrls, @events, @analytics) ->
         @scope.sectionName = "Issues"
         @scope.filters = {}
 
@@ -71,7 +70,6 @@ class IssuesController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
         # On Success
         promise.then =>
             @appTitle.set("Issues - " + @scope.project.name)
-            tgLoader.pageLoaded()
 
         # On Error
         promise.then null, @.onInitialDataError.bind(@)
@@ -91,7 +89,11 @@ class IssuesController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
         @rs.issues.storeFilters(@params.pslug, @location.search())
 
     loadProject: ->
-        return @rs.projects.get(@scope.projectId).then (project) =>
+        return @rs.projects.getBySlug(@params.pslug).then (project) =>
+            if not project.is_issues_activated
+                @location.path(@navUrls.resolve("permission-denied"))
+
+            @scope.projectId = project.id
             @scope.project = project
             @scope.$emit('project:loaded', project)
 
@@ -268,15 +270,11 @@ class IssuesController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
             return data
 
     loadInitialData: ->
-        promise = @repo.resolve({pslug: @params.pslug}).then (data) =>
-            @scope.projectId = data.project
+        promise = @.loadProject()
+        return promise.then (project) =>
+            @.fillUsersAndRoles(project.users, project.roles)
             @.initializeSubscription()
-            return data
-
-        return promise.then(=> @.loadProject())
-                      .then(=> @.loadUsersAndRoles())
-                      .then(=> @q.all([@.loadFilters(),
-                                       @.loadIssues()]))
+            return @q.all([@.loadFilters(), @.loadIssues()])
 
     saveCurrentFiltersTo: (newFilter) ->
         deferred = @q.defer()
@@ -308,41 +306,9 @@ module.controller("IssuesController", IssuesController)
 ## Issues Directive
 #############################################################################
 
-paginatorTemplate = """
-<ul class="paginator">
-    <% if (showPrevious) { %>
-    <li class="previous">
-        <a href="" class="previous next_prev_button" class="disabled">
-            <span i18next="pagination.prev">Prev</span>
-        </a>
-    </li>
-    <% } %>
-
-    <% _.each(pages, function(item) { %>
-    <li class="<%= item.classes %>">
-        <% if (item.type === "page") { %>
-        <a href="" data-pagenum="<%= item.num %>"><%= item.num %></a>
-        <% } else if (item.type === "page-active") { %>
-        <span class="active"><%= item.num %></span>
-        <% } else { %>
-        <span>...</span>
-        <% } %>
-    </li>
-    <% }); %>
-
-    <% if (showNext) { %>
-    <li class="next">
-        <a href="" class="next next_prev_button" class="disabled">
-            <span i18next="pagination.next">Next</span>
-        </a>
-    </li>
-    <% } %>
-</ul>
-"""
-
-IssuesDirective = ($log, $location) ->
+IssuesDirective = ($log, $location, $template, $compile) ->
     ## Issues Pagination
-    template = _.template(paginatorTemplate)
+    template = $template.get("issue/issue-paginator.html", true)
 
     linkPagination = ($scope, $el, $attrs, $ctrl) ->
         # Constants
@@ -390,7 +356,11 @@ IssuesDirective = ($log, $location) ->
                 else
                     pages.push({classes: "page", num: i, type: "page"})
 
-            $pagEl.html(template(options))
+
+            html = template(options)
+            html = $compile(html)($scope)
+
+            $pagEl.html(html)
 
         $scope.$watch "issues", (value) ->
             # Do nothing if value is not logical true
@@ -457,50 +427,16 @@ IssuesDirective = ($log, $location) ->
 
     return {link:link}
 
-module.directive("tgIssues", ["$log", "$tgLocation", IssuesDirective])
+module.directive("tgIssues", ["$log", "$tgLocation", "$tgTemplate", "$compile", IssuesDirective])
 
 
 #############################################################################
 ## Issues Filters Directive
 #############################################################################
 
-IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
-    template = _.template("""
-    <% _.each(filters, function(f) { %>
-        <% if (!f.selected) { %>
-        <a class="single-filter"
-            data-type="<%= f.type %>"
-            data-id="<%= f.id %>">
-            <span class="name" <% if (f.color){ %>style="border-left: 3px solid <%- f.color %>;"<% } %>>
-                <%- f.name %>
-            </span>
-            <% if (f.count){ %>
-            <span class="number"><%- f.count %></span>
-            <% } %>
-            <% if (f.type == "myFilters"){ %>
-            <span class="icon icon-delete"></span>
-            <% } %>
-        </a>
-        <% } %>
-    <% }) %>
-    <span class="new">
-        <input class="hidden my-filter-name" type="text" placeholder="filter name" />
-    </span>
-    """)
-
-    templateSelected = _.template("""
-    <% _.each(filters, function(f) { %>
-    <a class="single-filter selected"
-       data-type="<%= f.type %>"
-       data-id="<%= f.id %>">
-        <span class="name" <% if (f.color){ %>style="border-left: 3px solid <%= f.color %>;"<% } %>>
-            <%- f.name %>
-        </span>
-        <span class="icon icon-delete"></span>
-    </a>
-    <% }) %>
-    """)
-
+IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading, $template, $translate, $compile) ->
+    template = $template.get("issue/issues-filters.html", true)
+    templateSelected = $template.get("issue/issues-filters-selected.html", true)
 
     link = ($scope, $el, $attrs) ->
         $ctrl = $el.closest(".wrapper").controller()
@@ -508,14 +444,14 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
 
         showFilters = (title, type) ->
             $el.find(".filters-cats").hide()
-            $el.find(".filter-list").show()
+            $el.find(".filter-list").removeClass("hidden")
             $el.find("h2.breadcrumb").removeClass("hidden")
             $el.find("h2 a.subfilter span.title").html(title)
             $el.find("h2 a.subfilter span.title").prop("data-type", type)
 
         showCategories = ->
             $el.find(".filters-cats").show()
-            $el.find(".filter-list").hide()
+            $el.find(".filter-list").addClass("hidden")
             $el.find("h2.breadcrumb").addClass("hidden")
 
         initializeSelectedFilters = (filters) ->
@@ -527,15 +463,26 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
             renderSelectedFilters(selectedFilters)
 
         renderSelectedFilters = (selectedFilters) ->
+            _.filter selectedFilters, (f) =>
+                if f.color
+                    f.style = "border-left: 3px solid #{f.color}"
+
             html = templateSelected({filters:selectedFilters})
+            html = $compile(html)($scope)
             $el.find(".filters-applied").html(html)
+
             if selectedFilters.length > 0
                 $el.find(".save-filters").show()
             else
                 $el.find(".save-filters").hide()
 
         renderFilters = (filters) ->
+            _.filter filters, (f) =>
+                if f.color
+                    f.style = "border-left: 3px solid #{f.color}"
+
             html = template({filters:filters})
+            html = $compile(html)($scope)
             $el.find(".filter-list").html(html)
 
         toggleFilterSelection = (type, id) ->
@@ -551,9 +498,10 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
                     initializeSelectedFilters($scope.filters)
                 return null
 
-
             filters = $scope.filters[type]
-            filter = _.find(filters, {id:id})
+            filterId = if type == 'tags' then taiga.toString(id) else id
+            filter = _.find(filters, {id: filterId})
+
             filter.selected = (not filter.selected)
 
             # Convert id to null as string for properly
@@ -585,8 +533,16 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
         $scope.$on "filters:loaded", (ctx, filters) ->
             initializeSelectedFilters(filters)
 
+        $scope.$on "filters:issueupdate", (ctx, filters) ->
+            html = template({filters:filters.statuses})
+            html = $compile(html)($scope)
+            $el.find(".filter-list").html(html)
+
         selectQFilter = debounceLeading 100, (value) ->
             return if value is undefined
+
+            $ctrl.replaceFilter("page", null, true)
+
             if value.length == 0
                 $ctrl.replaceFilter("q", null)
                 $ctrl.storeFilters()
@@ -637,8 +593,8 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
 
             target = angular.element(event.currentTarget)
             customFilterName = target.parent().data('id')
-            title = "Delete custom filter" # TODO: i18n
-            message = "the custom filter '#{customFilterName}'" # TODO: i18n
+            title = $translate.instant("ISSUES.FILTERS.CONFIRM_DELETE.TITLE")
+            message = $translate.instant("ISSUES.FILTERS.CONFIRM_DELETE.MESSAGE", {customFilterName: customFilterName})
 
             $confirm.askOnDelete(title, message).then (finish) ->
                 promise = $ctrl.deleteMyFilter(customFilterName)
@@ -660,10 +616,11 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
             renderFilters($scope.filters["myFilters"])
             showFilters("My filters", "myFilters")
             $el.find('.save-filters').hide()
-            $el.find('.my-filter-name').show()
+            $el.find('.my-filter-name').removeClass("hidden")
             $el.find('.my-filter-name').focus()
+            $scope.$apply()
 
-        $el.on "keyup", ".new .my-filter-name", (event) ->
+        $el.on "keyup", ".my-filter-name", (event) ->
             event.preventDefault()
             if event.keyCode == 13
                 target = angular.element(event.currentTarget)
@@ -680,7 +637,7 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
                         if currentfilterstype == "myFilters"
                             renderFilters($scope.filters.myFilters)
 
-                        $el.find('.my-filter-name').hide()
+                        $el.find('.my-filter-name').addClass("hidden")
                         $el.find('.save-filters').show()
 
                     loadPromise.then null, ->
@@ -694,20 +651,20 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
 
             else if event.keyCode == 27
                 $el.find('.my-filter-name').val('')
-                $el.find('.my-filter-name').hide()
+                $el.find('.my-filter-name').addClass("hidden")
                 $el.find('.save-filters').show()
 
     return {link:link}
 
 module.directive("tgIssuesFilters", ["$log", "$tgLocation", "$tgResources", "$tgConfirm", "$tgLoading",
-                                     IssuesFiltersDirective])
+                                     "$tgTemplate", "$translate", "$compile", IssuesFiltersDirective])
 
 
 #############################################################################
 ## Issue status Directive (popover for change status)
 #############################################################################
 
-IssueStatusInlineEditionDirective = ($repo, popoverService) ->
+IssueStatusInlineEditionDirective = ($repo, $template, $rootscope) ->
     ###
     Print the status of an Issue and a popover to change it.
     - tg-issue-status-inline-edition: The issue
@@ -719,16 +676,7 @@ IssueStatusInlineEditionDirective = ($repo, popoverService) ->
 
     NOTE: This directive need 'issueStatusById' and 'project'.
     ###
-    selectionTemplate = _.template("""
-    <ul class="popover pop-status">
-        <% _.forEach(statuses, function(status) { %>
-        <li>
-            <a href="" class="status" title="<%- status.name %>" data-status-id="<%- status.id %>">
-                <%- status.name %>
-            </a>
-        </li>
-        <% }); %>
-    </ul>""")
+    selectionTemplate = $template.get("issue/issue-status-inline-edition-selection.html", true)
 
     updateIssueStatus = ($el, issue, issueStatusById) ->
         issueStatusDomParent = $el.find(".issue-status")
@@ -754,12 +702,29 @@ IssueStatusInlineEditionDirective = ($repo, popoverService) ->
             event.preventDefault()
             event.stopPropagation()
             target = angular.element(event.currentTarget)
+
+            for filter in $scope.filters.statuses
+                if filter.id == issue.status
+                    filter.count--
+
             issue.status = target.data("status-id")
             $el.find(".pop-status").popover().close()
             updateIssueStatus($el, issue, $scope.issueStatusById)
 
             $scope.$apply () ->
-                $repo.save(issue).then
+                $repo.save(issue).then ->
+                    $ctrl.loadIssues()
+
+                    for filter in $scope.filters.statuses
+                        if filter.id == issue.status
+                            filter.count++
+
+                    $rootscope.$broadcast("filters:issueupdate", $scope.filters)
+
+                for filter in $scope.filters.statuses
+                    if filter.id == issue.status
+                        filter.count++
+                $rootscope.$broadcast("filters:issueupdate", $scope.filters)
 
         taiga.bindOnce $scope, "project", (project) ->
             $el.append(selectionTemplate({ 'statuses':  project.issue_statuses }))
@@ -778,7 +743,8 @@ IssueStatusInlineEditionDirective = ($repo, popoverService) ->
 
     return {link: link}
 
-module.directive("tgIssueStatusInlineEdition", ["$tgRepo", IssueStatusInlineEditionDirective])
+module.directive("tgIssueStatusInlineEdition", ["$tgRepo", "$tgTemplate", "$rootScope",
+                                                IssueStatusInlineEditionDirective])
 
 
 #############################################################################
@@ -787,7 +753,7 @@ module.directive("tgIssueStatusInlineEdition", ["$tgRepo", IssueStatusInlineEdit
 
 IssueAssignedToInlineEditionDirective = ($repo, $rootscope, popoverService) ->
     template = _.template("""
-    <img src="<%= imgurl %>" alt="<%- name %>"/>
+    <img src="<%- imgurl %>" alt="<%- name %>"/>
     <figcaption><%- name %></figcaption>
     """)
 
@@ -829,4 +795,5 @@ IssueAssignedToInlineEditionDirective = ($repo, $rootscope, popoverService) ->
 
     return {link: link}
 
-module.directive("tgIssueAssignedToInlineEdition", ["$tgRepo", "$rootScope", IssueAssignedToInlineEditionDirective])
+module.directive("tgIssueAssignedToInlineEdition", ["$tgRepo", "$rootScope",
+                                                    IssueAssignedToInlineEditionDirective])

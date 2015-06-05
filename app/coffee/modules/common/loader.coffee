@@ -40,128 +40,79 @@ LoaderDirective = (tgLoader, $rootscope) ->
             $(document.body).removeClass("loader-active")
             $el.removeClass("active")
 
-        $rootscope.$on "$routeChangeSuccess", (e) ->
-            tgLoader.start()
-
-        $rootscope.$on "$locationChangeSuccess", (e) ->
-            tgLoader.reset()
-
     return {
         link: link
     }
 
 module.directive("tgLoader", ["tgLoader", "$rootScope", LoaderDirective])
 
-Loader = () ->
-    forceDisabled = false
-
-    defaultLog = {
-        request: {
-            count: 0,
-            time: 0
-        }
-        response: {
-            count: 0,
-            time: 0
-        }
+Loader = ($rootscope) ->
+    config = {
+        minTime: 300
     }
 
-    defaultConfig = {
-        enabled: false,
-        minTime: 1000,
-        auto: false
-    }
+    startLoadTime = 0
+    requestCount = 0
+    lastResponseDate = 0
 
-    log = _.merge({}, defaultLog)
-    config = _.merge({}, defaultConfig)
+    pageLoaded = (force = false) ->
+        if startLoadTime
+            timeoutValue = 0
 
-    @.add = (auto = false) ->
-        return () ->
-            if !forceDisabled
-                config.auto = auto
-                config.enabled = true
+            if !force
+                endTime = new Date().getTime()
+                diff = endTime - startLoadTime
 
-    @.$get = ["$rootScope", ($rootscope) ->
-        interval = null
+                if diff < config.minTime
+                    timeoutValue = config.minTime - diff
+
+            timeout(timeoutValue, -> $rootscope.$broadcast("loader:end"))
+
         startLoadTime = 0
+        requestCount = 0
+        lastResponseDate = 0
 
-        reset = () ->
-            log = _.merge({}, defaultLog)
-            config = _.merge({}, defaultConfig)
+    autoClose = () ->
+        maxAuto = 5000
+        timeoutAuto = setTimeout (() ->
+            pageLoaded()
 
-        pageLoaded = (force = false) ->
-            if startLoadTime
-                timeoutValue = 0
+            clearInterval(intervalAuto)
+        ), maxAuto
 
-                if !force
-                    endTime = new Date().getTime()
-                    diff = endTime - startLoadTime
-
-                    if diff < config.minTime
-                        timeoutValue = config.minTime - diff
-
-                timeout(timeoutValue, -> $rootscope.$broadcast("loader:end"))
-
-        return {
-            reset: () ->
-                reset()
-
-            pageLoaded: () ->
+        intervalAuto = setInterval (() ->
+            if lastResponseDate && requestCount == 0
                 pageLoaded()
 
-            start: () ->
-                if config.enabled
-                    if config.auto
-                        interval = setInterval ( ->
-                            currentDate = new Date().getTime()
+                clearInterval(intervalAuto)
+                clearTimeout(timeoutAuto)
+        ), 50
 
-                            if log.request.count == log.response.count && currentDate - log.response.time  > 200
-                                clearInterval(interval)
-                                pageLoaded()
+    start = () ->
+        startLoadTime = new Date().getTime()
+        $rootscope.$broadcast("loader:start")
 
-                        ), 100
-
-                    startLoadTime = new Date().getTime()
-                    $rootscope.$broadcast("loader:start")
-                else
-                    pageLoaded(true)
-
-            onStart: (fn) ->
-                $rootscope.$on("loader:start", fn)
-
-            onEnd: (fn) ->
-                $rootscope.$on("loader:end", fn)
-
-            logRequest: () ->
-                log.request.count++
-                log.request.time = new Date().getTime()
-
-            logResponse: () ->
-                log.response.count++
-                log.response.time = new Date().getTime()
-
-            preventLoading: () ->
-                forceDisabled = true
-
-            disablePreventLoading: () ->
-                forceDisabled = false
-        }
-    ]
-
-    return
-
-module.provider("tgLoader", [Loader])
-
-loaderInterceptor = (tgLoader) ->
     return {
-        request: (config) ->
-            tgLoader.logRequest()
+        pageLoaded: pageLoaded
+        start: start
+        startWithAutoClose: () ->
+            start()
+            autoClose()
+        onStart: (fn) ->
+            $rootscope.$on("loader:start", fn)
 
-            return config
-        response: (response) ->
-            tgLoader.logResponse()
+        onEnd: (fn) ->
+            $rootscope.$on("loader:end", fn)
 
-            return response
+        logRequest: () ->
+            requestCount++
+
+        logResponse: () ->
+            requestCount--
+            lastResponseDate = new Date().getTime()
     }
 
-module.factory('loaderInterceptor', ['tgLoader', loaderInterceptor])
+
+Loader.$inject = ["$rootScope"]
+
+module.factory("tgLoader", Loader)
