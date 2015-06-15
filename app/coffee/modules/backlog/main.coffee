@@ -45,7 +45,7 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
         "$routeParams",
         "$q",
         "$tgLocation",
-        "$appTitle",
+        "tgAppMetaService",
         "$tgNavUrls",
         "$tgEvents",
         "$tgAnalytics",
@@ -53,7 +53,7 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
     ]
 
     constructor: (@scope, @rootscope, @repo, @confirm, @rs, @params, @q,
-                  @location, @appTitle, @navUrls, @events, @analytics, @translate) ->
+                  @location, @appMetaService, @navUrls, @events, @analytics, @translate) ->
         bindMethods(@)
 
         @scope.sectionName = @translate.instant("BACKLOG.SECTION_NAME")
@@ -66,7 +66,12 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
 
         # On Success
         promise.then =>
-            @appTitle.set("Backlog - " + @scope.project.name)
+            title = @translate.instant("BACKLOG.PAGE_TITLE", {projectName: @scope.project.name})
+            description = @translate.instant("BACKLOG.PAGE_DESCRIPTION", {
+                projectName: @scope.project.name,
+                projectDescription: @scope.project.description
+            })
+            @appMetaService.setAll(title, description)
 
             if @rs.userstories.getShowTags(@scope.projectId)
                 @showTags = true
@@ -603,9 +608,11 @@ BacklogDirective = ($repo, $rootscope, $translate) ->
                 $ctrl.loadProjectStats()
 
 
-        # Enable move to current sprint only when there are selected us's
-        $el.on "change", ".backlog-table-body .user-stories input:checkbox", (event) ->
-            target = angular.element(event.currentTarget)
+        shiftPressed = false
+        lastChecked = null
+
+        checkSelected = (target) ->
+            lastChecked = target.closest(".us-item-row")
             moveToCurrentSprintDom = $el.find("#move-to-current-sprint")
             selectedUsDom = $el.find(".backlog-table-body .user-stories input:checkbox:checked")
 
@@ -615,6 +622,33 @@ BacklogDirective = ($repo, $rootscope, $translate) ->
                 moveToCurrentSprintDom.hide()
 
             target.closest('.us-item-row').toggleClass('ui-multisortable-multiple')
+
+        $(window).on "keydown.shift-pressed keyup.shift-pressed", (event) ->
+            shiftPressed = !!event.shiftKey
+
+            return true
+
+        # Enable move to current sprint only when there are selected us's
+        $el.on "change", ".backlog-table-body .user-stories input:checkbox", (event) ->
+            # check elements between the last two if shift is pressed
+            if lastChecked && shiftPressed
+                elements = []
+                current = $(event.currentTarget).closest(".us-item-row")
+                nextAll = lastChecked.nextAll()
+                prevAll = lastChecked.prevAll()
+
+                if _.some(nextAll, (next) -> next == current[0])
+                    elements = lastChecked.nextUntil(current)
+                else if _.some(prevAll, (prev) -> prev == current[0])
+                    elements = lastChecked.prevUntil(current)
+
+                _.map elements, (elm) ->
+                    input = $(elm).find("input:checkbox")
+                    input.prop('checked', true);
+                    checkSelected(input)
+
+            target = angular.element(event.currentTarget)
+            checkSelected(target)
 
         $el.on "click", "#move-to-current-sprint", (event) =>
             # Calculating the us's to be modified
@@ -701,6 +735,7 @@ BacklogDirective = ($repo, $rootscope, $translate) ->
 
         $scope.$on "$destroy", ->
             $el.off()
+            $(window).off(".shift-pressed")
 
     return {link: link}
 

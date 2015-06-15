@@ -10,18 +10,19 @@ describe "ProfileController", ->
         {id: 3}
     ])
 
-    _mockAppTitle = () ->
-        stub = sinon.stub()
+    _mockTranslate = () ->
+        mocks.translate = sinon.stub()
 
-        mocks.appTitle = {
-            set: sinon.spy()
+        provide.value "$translate", mocks.translate
+
+    _mockAppMetaService = () ->
+        mocks.appMetaService = {
+            setAll: sinon.spy()
         }
 
-        provide.value "$appTitle", mocks.appTitle
+        provide.value "tgAppMetaService", mocks.appMetaService
 
     _mockCurrentUser = () ->
-        stub = sinon.stub()
-
         mocks.currentUser = {
             getUser: sinon.stub()
         }
@@ -29,8 +30,6 @@ describe "ProfileController", ->
         provide.value "tgCurrentUserService", mocks.currentUser
 
     _mockUserService = () ->
-        stub = sinon.stub()
-
         mocks.userService = {
             getUserByUserName: sinon.stub()
         }
@@ -38,15 +37,11 @@ describe "ProfileController", ->
         provide.value "tgUserService", mocks.userService
 
     _mockRouteParams = () ->
-        stub = sinon.stub()
-
         mocks.routeParams = {}
 
         provide.value "$routeParams", mocks.routeParams
 
     _mockXhrErrorService = () ->
-        stub = sinon.stub()
-
         mocks.xhrErrorService = {
             response: sinon.spy()
         }
@@ -56,12 +51,12 @@ describe "ProfileController", ->
     _mocks = () ->
         module ($provide) ->
             provide = $provide
-            _mockAppTitle()
+            _mockTranslate()
+            _mockAppMetaService()
             _mockCurrentUser()
             _mockRouteParams()
             _mockUserService()
             _mockXhrErrorService()
-
             return null
 
     _inject = (callback) ->
@@ -81,8 +76,17 @@ describe "ProfileController", ->
         mocks.routeParams.slug = "user-slug"
 
         user = Immutable.fromJS({
-            full_name: "full-name"
+            username: "username"
+            full_name_display: "full-name-display"
+            bio: "bio"
         })
+
+        mocks.translate
+            .withArgs('USER.PROFILE.PAGE_TITLE', {
+                userFullName: user.get("full_name_display"),
+                userUsername: user.get("username")
+            })
+            .promise().resolve('user-profile-page-title')
 
         mocks.userService.getUserByUserName.withArgs(mocks.routeParams.slug).promise().resolve(user)
 
@@ -91,8 +95,7 @@ describe "ProfileController", ->
         setTimeout ( ->
             expect(ctrl.user).to.be.equal(user)
             expect(ctrl.isCurrentUser).to.be.false
-            expect(mocks.appTitle.set.calledWithExactly("full-name")).to.be.true
-
+            expect(mocks.appMetaService.setAll.calledWithExactly("user-profile-page-title", "bio")).to.be.true
             done()
         )
 
@@ -111,21 +114,32 @@ describe "ProfileController", ->
 
         setTimeout ( ->
             expect(mocks.xhrErrorService.response.withArgs(xhr)).to.be.calledOnce
-
             done()
         )
 
-    it "define current user", () ->
+    it "define current user", (done) ->
         $scope = $rootScope.$new()
 
         user = Immutable.fromJS({
+            username: "username"
             full_name_display: "full-name-display"
+            bio: "bio"
         })
+
+        mocks.translate
+            .withArgs('USER.PROFILE.PAGE_TITLE', {
+                userFullName: user.get("full_name_display"),
+                userUsername: user.get("username")
+            })
+            .promise().resolve('user-profile-page-title')
 
         mocks.currentUser.getUser.returns(user)
 
         ctrl = $controller("Profile")
 
-        expect(ctrl.user).to.be.equal(user)
-        expect(ctrl.isCurrentUser).to.be.true
-        expect(mocks.appTitle.set.calledWithExactly("full-name-display")).to.be.true
+        setTimeout ( ->
+            expect(ctrl.user).to.be.equal(user)
+            expect(ctrl.isCurrentUser).to.be.true
+            expect(mocks.appMetaService.setAll.withArgs("user-profile-page-title", "bio")).to.be.calledOnce
+            done()
+        )

@@ -45,9 +45,15 @@ timelineType = (timeline, event) ->
         },
         { # NewTask
             check: (timeline, event) ->
-                return event.obj == 'task' && event.type == 'create'
+                return event.obj == 'task' && event.type == 'create' && !timeline.data.task.userstory
             key: 'TIMELINE.TASK_CREATED',
             translate_params: ['username', 'project_name', 'obj_name']
+        },
+        { # NewTask with US
+            check: (timeline, event) ->
+                return event.obj == 'task' && event.type == 'create' && timeline.data.task.userstory
+            key: 'TIMELINE.TASK_CREATED_WITH_US',
+            translate_params: ['username', 'project_name', 'obj_name', 'us_name']
         },
         { # NewMilestone
             check: (timeline, event) ->
@@ -61,7 +67,7 @@ timelineType = (timeline, event) ->
             key: 'TIMELINE.NEW_COMMENT_US',
             translate_params: ['username', 'obj_name'],
             description: (timeline) ->
-                return timeline.data.comment
+                return $(timeline.data.comment_html).text()
         },
         { # NewIssueComment
             check: (timeline, event) ->
@@ -69,15 +75,15 @@ timelineType = (timeline, event) ->
             key: 'TIMELINE.NEW_COMMENT_ISSUE',
             translate_params: ['username', 'obj_name'],
             description: (timeline) ->
-                return timeline.data.comment
+                return $(timeline.data.comment_html).text()
         },
-        { # NewTask
+        { # NewTaskComment
             check: (timeline, event) ->
                 return timeline.data.comment && event.obj == 'task'
             key: 'TIMELINE.NEW_COMMENT_TASK'
             translate_params: ['username', 'obj_name'],
             description: (timeline) ->
-                return timeline.data.comment
+                return $(timeline.data.comment_html).text()
         },
         { # UsToMilestone
             check: (timeline, event, field_name) ->
@@ -106,7 +112,10 @@ timelineType = (timeline, event) ->
             key: 'TIMELINE.BLOCKED',
             translate_params: ['username', 'obj_name'],
             description: (timeline) ->
-                return $(timeline.data.values_diff.blocked_note_html[1]).text()
+                if timeline.data.values_diff.blocked_note_html
+                    return $(timeline.data.values_diff.blocked_note_html[1]).text()
+                else
+                    return false
         },
         { # UnBlocked
             check: (timeline, event) ->
@@ -152,6 +161,12 @@ timelineType = (timeline, event) ->
                 return event.obj == 'task' && event.type == 'change' && timeline.data.task.userstory
             key: 'TIMELINE.TASK_UPDATED_WITH_US',
             translate_params: ['username', 'field_name', 'obj_name', 'us_name']
+        },
+        { # New User
+            check: (timeline, event) ->
+                return event.obj == 'user' && event.type == 'create'
+            key: 'TIMELINE.NEW_USER',
+            translate_params: ['username']
         }
     ]
 

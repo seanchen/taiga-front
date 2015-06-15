@@ -1,3 +1,5 @@
+unslugify = @.taiga.unslugify
+
 class UserTimelineItemTitle
     @.$inject = [
         "$translate"
@@ -6,7 +8,7 @@ class UserTimelineItemTitle
     _fieldTranslationKey: {
         'status': 'COMMON.FIELDS.STATUS',
         'subject': 'COMMON.FIELDS.SUBJECT',
-        'description': 'COMMON.FIELDS.DESCRIPTION',
+        'description_diff': 'COMMON.FIELDS.DESCRIPTION',
         'points': 'COMMON.FIELDS.POINTS',
         'assigned_to': 'COMMON.FIELDS.ASSIGNED_TO',
         'severity': 'ISSUES.FIELDS.SEVERITY',
@@ -56,7 +58,7 @@ class UserTimelineItemTitle
             url = @._getDetailObjUrl(event)
 
             if event.obj == 'wikipage'
-                text = obj.slug
+                text = unslugify(obj.slug)
             else if event.obj == 'milestone'
                 text = obj.name
             else

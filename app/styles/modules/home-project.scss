@@ -1,4 +1,7 @@
 .single-project {
+    .single-project-intro {
+        margin-bottom: 2rem;
+    }
     h1 {
         line-height: 1.2;
         margin: 0;
@@ -7,6 +10,10 @@
     .private {
         font-size: 1rem;
         vertical-align: super;
+    }
+    .description {
+        @extend %light;
+        @extend %medium;
     }
     .project-data {
         display: flex;
@@ -24,13 +31,16 @@
     }
     .single-project-tags {
         margin-bottom: 1rem;
+        margin-top: 1rem;
     }
     .timeline {
         flex: 1;
         margin-right: 1rem;
     }
     .involved-data {
-        flex-basis: 200px;
+        flex-basis: 220px;
+        flex-shrink: 0;
+        width: 220px;
     }
     .involved-team,
     .involved-organization {
@@ -46,6 +56,7 @@
             }
         }
         img {
+            border-radius: .2rem;
             width: 100%;
         }
     }

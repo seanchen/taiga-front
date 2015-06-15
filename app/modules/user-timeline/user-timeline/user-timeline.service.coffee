@@ -8,7 +8,7 @@ class UserTimelineService extends taiga.Service
     _valid_fields: [
         'status',
         'subject',
-        'description',
+        'description_diff',
         'assigned_to',
         'points',
         'severity',
@@ -48,16 +48,23 @@ class UserTimelineService extends taiga.Service
 
                     return false
 
+            if timeline.get("data").get("comment_deleted")
+                return false
+
         if !@._isValidEvent(timeline.get('event_type'))
             return false
 
         return true
 
-    getTimeline: (userId, page) ->
-        return @rs.users.getTimeline(userId, page)
+    getProfileTimeline: (userId, page) ->
+        return @rs.users.getProfileTimeline(userId, page)
             .then (result) =>
                 return result.filter (timeline) => @._filterValidTimelineItems(timeline)
 
+    getUserTimeline: (userId, page) ->
+        return @rs.users.getUserTimeline(userId, page)
+            .then (result) =>
+                return result.filter (timeline) => @._filterValidTimelineItems(timeline)
 
     getProjectTimeline: (projectId, page) ->
         return @rs.projects.getTimeline(projectId, page)

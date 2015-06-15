@@ -2,22 +2,30 @@ class ProjectController
     @.$inject = [
         "tgProjectsService",
         "$routeParams",
-        "$appTitle",
+        "tgAppMetaService",
         "$tgAuth",
-        "tgXhrErrorService"
+        "tgXhrErrorService",
+        "$translate"
     ]
 
-    constructor: (@projectsService, @routeParams, @appTitle, @auth, @xhrError) ->
+    constructor: (@projectsService, @routeParams, @appMetaService, @auth, @xhrError, @translate) ->
         projectSlug = @routeParams.pslug
         @.user = @auth.userData
 
         @projectsService
             .getProjectBySlug(projectSlug)
             .then (project) =>
-                @appTitle.set(project.get("name"))
-
                 @.project = project
+                @._setMeta(@.project)
+
             .catch (xhr) =>
                 @xhrError.response(xhr)
+
+    _setMeta: (project)->
+        ctx = {projectName: project.get("name")}
+
+        title = @translate("PROJECT.PAGE_TITLE", ctx).then (title) =>
+            description = project.get("description")
+            @appMetaService.setAll(title, description)
 
 angular.module("taigaProjects").controller("Project", ProjectController)

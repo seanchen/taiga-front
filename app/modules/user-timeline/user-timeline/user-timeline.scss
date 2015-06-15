@@ -1,11 +1,10 @@
 .profile-timeline {
-    border-top: 1px solid $whitish;
     .activity-item {
         border-bottom: 1px solid $whitish;
         padding: 1rem .5rem;
         position: relative;
         p {
-            margin-bottom: .5rem;
+            margin-bottom: 0;
         }
         a {
             color: $green-taiga;
@@ -18,7 +17,7 @@
             }
         }
         blockquote {
-            line-height: 2em;
+            line-height: 1.4rem;
             margin-bottom: 0;
             margin-left: calc(35px + 1rem);
             margin-top: .5rem;
@@ -34,7 +33,7 @@
             align-items: center;
             color: $gray-light;
             display: flex;
-            margin-right: 100px;
+            margin-right: 130px;
         }
         .activity-date {
             color: $gray-light;
@@ -43,12 +42,14 @@
             right: .5rem;
             top: 1.2rem;
         }
-        .profile-contact-picture {
-            flex-basis: 38px;
+        .profile-contact-picture,
+        .profile-member-picture {
+            border-radius: .1rem;
+            flex-basis: 2rem;
             flex-shrink: 0;
             margin-right: 1rem;
             vertical-align: center;
-            width: 38px;
+            width: 2rem;
             img {
                 width: 100%;
             }
@@ -59,6 +60,10 @@
         margin-bottom: .5rem;
         margin-left: calc(35px + 1rem);
         margin-top: .5rem;
+        .profile-member-picture {
+            flex-basis: 3rem;
+            width: 3rem;
+        }
         .activity-member-info {
             flex: 1;
         }

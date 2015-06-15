@@ -1,13 +1,14 @@
-class ProfilePageController
+class ProfileController
     @.$inject = [
-        "$appTitle",
+        "tgAppMetaService",
         "tgCurrentUserService",
         "$routeParams",
         "tgUserService",
-        "tgXhrErrorService"
+        "tgXhrErrorService",
+        "$translate"
     ]
 
-    constructor: (@appTitle, @currentUserService, @routeParams, @userService, @xhrError) ->
+    constructor: (@appMetaService, @currentUserService, @routeParams, @userService, @xhrError, @translate) ->
         @.isCurrentUser = false
 
         if @routeParams.slug
@@ -16,13 +17,23 @@ class ProfilePageController
                 .then (user) =>
                     @.user = user
                     @.isCurrentUser = false
-                    @appTitle.set(@.user.get('full_name'))
+                    @._setMeta(@.user)
                 .catch (xhr) =>
                     @xhrError.response(xhr)
 
         else
             @.user = @currentUserService.getUser()
             @.isCurrentUser = true
-            @appTitle.set(@.user.get('full_name_display'))
+            @._setMeta(@.user)
 
-angular.module("taigaProfile").controller("Profile", ProfilePageController)
+    _setMeta: (user) ->
+        ctx = {
+            userFullName: user.get("full_name_display"),
+            userUsername: user.get("username")
+        }
+
+        @translate("USER.PROFILE.PAGE_TITLE", ctx).then (title) =>
+            description = user.get("bio")
+            @appMetaService.setAll(title, description)
+
+angular.module("taigaProfile").controller("Profile", ProfileController)
